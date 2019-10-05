@@ -17,3 +17,9 @@ ZONE=${ZONE} \
 ./bigpi \
   -bigm.system=gce
 ```
+
+## References
+
++ Google Compute Engine [example](https://github.com/googleapis/google-api-go-client/blob/master/examples/compute.go)
++ Operations [link](https://cloud.google.com/compute/docs/api/how-tos/api-requests-responses#handling_api_responses)
++ Compute Engine instance [life-cycle](https://cloud.google.com/compute/docs/instances/instance-life-cycle)

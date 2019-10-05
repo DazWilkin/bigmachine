@@ -11,18 +11,13 @@ import (
 	"time"
 
 	"github.com/grailbio/bigmachine"
-
-	compute "google.golang.org/api/compute/v1"
 )
 
 const (
 	systemName = "gce"
 )
 const (
-	defaultNamePrefix   = "bigmachine"
-	defaultInstanceType = "f1-micro"
-	defaultImageProject = "debian-cloud"
-	defaultImageFamily  = "debian-9"
+	prefix = "bigmachine"
 )
 
 var _ bigmachine.System = (*System)(nil)
@@ -39,15 +34,13 @@ func init() {
 }
 
 type System struct {
-	ImageFamily  string
-	ImageProject string
-	InstanceType string
-	OnDemand     bool
-	ProjectID    string
-	Zone         string
+	Project string
+	Zone    string
 }
 
-func (s *System) Exit(int) {
+func (s *System) Exit(code int) {
+	log.Println("[gce:Exit] Entered")
+	os.Exit(code)
 
 }
 func (s *System) HTTPClient() *http.Client {
@@ -57,18 +50,22 @@ func (s *System) HTTPClient() *http.Client {
 
 }
 func (s *System) KeepaliveConfig() (period, timeout, rpcTimeout time.Duration) {
+	log.Println("[gce:KeepAliveConfig] Entered")
 	period = time.Minute
 	timeout = 10 * time.Minute
 	rpcTimeout = 2 * time.Minute
 	return
 }
 func (s *System) ListenAndServe(addr string, handle http.Handler) error {
+	log.Println("[gce:ListenAndServe] Entered")
 	return nil
 }
 func (s *System) Main() error {
+	log.Println("[gce:Main] Entered")
 	return nil
 }
 func (s *System) Maxprocs() int {
+	log.Println("[gce:Maxprocs] Entered")
 	return 0
 }
 
@@ -77,135 +74,86 @@ func (s *System) Name() string {
 	return systemName
 }
 func (s *System) Init(b *bigmachine.B) error {
-	log.Println("[gce:Init] Configure Compute Engine defaults")
-	s.ProjectID = os.Getenv("PROJECT")
+	log.Println("[gce:Init] Entered")
+	s.Project = os.Getenv("PROJECT")
 	s.Zone = os.Getenv("ZONE")
-	s.ImageProject = defaultImageProject
-	s.ImageFamily = defaultImageFamily
-	s.InstanceType = defaultInstanceType
 	return nil
 }
 func (s *System) Read(ctx context.Context, m *bigmachine.Machine, filename string) (io.Reader, error) {
+	log.Println("[gce:Read] Entered")
 	return nil, nil
 }
-func (s *System) Shutdown() {}
-
-func (s *System) MachineType() string {
-	return fmt.Sprintf("projects/%s/zones/%s/machineTypes/%s", s.ProjectID, s.Zone, s.InstanceType)
-}
-func (s *System) SourceImage() string {
-	return fmt.Sprintf("projects/%s/global/images/family/%s", s.ImageProject, s.ImageFamily)
+func (s *System) Shutdown() {
+	log.Println("[gce:Shutdown] Entered")
 }
 
 // Start attempts to create 'count' GCE instances returns a list of machines and (!) any failures
 func (s *System) Start(ctx context.Context, count int) ([]*bigmachine.Machine, error) {
+	log.Println("[gce:Start] Entered")
 	if count == 0 {
-		log.Println("gce:Start] warning: request to create 0 (zero) instances")
+		log.Println("[gce:Start] warning: request to create 0 (zero) instances")
 		return []*bigmachine.Machine{}, nil
 	}
 	if count < 0 {
-		return nil, fmt.Errorf("unable to create <0 instances")
+		return nil, fmt.Errorf("[gce:Start] unable to create <0 instances")
 	}
 
-	computeService, err := compute.NewService(ctx)
+	err := NewClient(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	type OperationError struct {
+	type Result struct {
 		machine *bigmachine.Machine
 		err     error
 	}
 	var wg sync.WaitGroup
 
 	// Create buffered (non-blocking) channel since we know the number of machines
-	ch := make(chan OperationError, count)
+	// Results will either be success(bigmachine.Machine) or error
+	ch := make(chan Result, count)
 
 	// Iterate over Machine creation writing results to the channel
 	// Results are Operations or Errors
 	for i := 0; i < count; i++ {
 		wg.Add(1)
+		name := fmt.Sprintf("%s-%02d", prefix, i)
 		go func(name string) {
 			defer wg.Done()
-			log.Printf("[gce:Start:go] %s: creating", name)
-			instance := &compute.Instance{
-				Name:        name,
-				MachineType: s.MachineType(),
-				Disks: []*compute.AttachedDisk{
-					&compute.AttachedDisk{
-						AutoDelete: true,
-						Boot:       true,
-						InitializeParams: &compute.AttachedDiskInitializeParams{
-							SourceImage: s.SourceImage(),
-						},
-					},
-				},
-				Tags: &compute.Tags{
-					Items: []string{
-						"bigmachine",
-					},
-				},
-				NetworkInterfaces: []*compute.NetworkInterface{
-					&compute.NetworkInterface{
-						AccessConfigs: []*compute.AccessConfig{
-							&compute.AccessConfig{
-								Type: "ONE_TO_ONE_NAT",
-							},
-						},
-					},
-				},
+			machine, err := Create(ctx, s.Project, s.Zone, name)
+			ch <- Result{
+				machine: machine,
+				err:     err,
 			}
-			// TODO(dazwilkin) Synchronous? The operation should complete (or fail) by the return
-			operation, err := computeService.Instances.Insert(s.ProjectID, s.Zone, instance).Context(ctx).Do()
-
-			log.Printf("[gce:Start:go] %s: %d status: %s", name, operation.Id, operation.Status)
-			log.Println(err)
-
-			// TODO(dazwilkin) What's the process to wait on a stable instance?
-			start := time.Now()
-			timeout := 1 * time.Minute
-			for operation.Status != "RUNNING" && time.Since(start) < timeout {
-				time.Sleep(1 * time.Second)
-			}
-			time.Sleep(5 * time.Second)
-
-			// After Insert'ing need to Get
-			instance, err = computeService.Instances.Get(s.ProjectID, s.Zone, name).Context(ctx).Do()
-			if err != nil {
-				log.Println("[gce:Start:go] %s: %s", name, err)
-			}
-
-			natIP := instance.NetworkInterfaces[0].AccessConfigs[0].NatIP
-			log.Printf("[gce:Start:go] %s: NatIP: %s", name, natIP)
-
-			ch <- OperationError{
-				machine: &bigmachine.Machine{
-					Addr:     natIP,
-					Maxprocs: 0,
-					NoExec:   false,
-				},
-				err: err,
-			}
-		}(fmt.Sprintf("%s-%02d", defaultNamePrefix, i))
+		}(name)
 	}
-	wg.Wait()
 
-	// Proccess the Operations|Errors creating Machines
-	// If there are errors, there will be fewer than 'count' machines
+	log.Println("[gce:Start] await completion of Go routines")
+	wg.Wait()
+	log.Println("[gce:Start] Go routines have completed")
+	close(ch)
+
+	// Proccess the channel of Results
+	// If there were errors, there will be fewer than 'count' machines
 	var machines []*bigmachine.Machine
 	var failures uint
+	log.Println("[gce:Start] Iterate over the channel")
 	for i := range ch {
 		if i.err != nil {
-			log.Println("[gce:Start:go] %s", err)
+			log.Printf("[gce:Start:go] %s", err)
 			failures = failures + 1
 		}
+		log.Println("[gce:Start] Adding bigmachine")
 		machines = append(machines, i.machine)
 	}
+	log.Println("[gce:Start] Done w/ channel")
 	if failures > 0 {
 		err = fmt.Errorf("[gcs:Start] %d/%d machines were not created", failures, count)
 	}
+	log.Println("[gce:Exit] Completed")
 	return machines, err
 }
 func (s *System) Tail(ctx context.Context, m *bigmachine.Machine) (io.Reader, error) {
+	log.Println("[gce:Tail] Entered")
 	return nil, nil
 }
