@@ -20,10 +20,12 @@ import (
 
 	"github.com/grailbio/base/log"
 	"github.com/grailbio/bigmachine"
+	"github.com/grailbio/bigmachine/compute_engine"
 	"github.com/grailbio/bigmachine/ec2system"
 )
 
 var (
+	// TODO(dazwilkin) Restructure flags to permit arbitrary (!?) backends
 	systemFlag   = flag.String("bigm.system", "local", "system on which to run the bigmachine")
 	instanceType = flag.String("bigm.ec2type", "m3.medium", "instance type with which to launch a bigmachine EC2 cluster")
 	ondemand     = flag.Bool("bigm.ec2ondemand", false, "use ec2 on-demand instances instead of spot")
@@ -41,6 +43,11 @@ func Start() *bigmachine.B {
 			InstanceType: *instanceType,
 			OnDemand:     *ondemand,
 		}
+	case "gce":
+		sys = &compute_engine.System{
+			// TOOD(dazwilkin) This should be configurable either through the command-line or environment
+		}
+
 	case "local":
 	}
 	b := bigmachine.Start(sys)
