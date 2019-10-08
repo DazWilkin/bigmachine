@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"sync"
 	"time"
 
 	"github.com/grailbio/bigmachine"
+	"golang.org/x/net/http2"
 )
 
 const (
@@ -19,23 +21,29 @@ const (
 const (
 	prefix = "bigmachine"
 )
+const (
+	httpTimeout = 30 * time.Second
+)
 
 var _ bigmachine.System = (*System)(nil)
 
 var (
-	system = new(System)
+	Instance = new(System)
 )
 
 func init() {
 	if os.Getenv("GOOGLE_APPLICATION_CREDENTIALS") == "" {
-		log.Fatal("Compute Engine backend uses Application Default Credentials. GOOGLE_APPLICATION_CREDENTIALS environment variable is unset")
+		// TODO(dazwilkin) When this System is running locally, the environment variable is required. When this System is running on a GCE Instance, it will be obtained automatically
+		// TODO(dazwilkin) Possibly check for the Metadata Service here to help with this decision?
+		log.Println("Compute Engine backend uses Application Default Credentials. GOOGLE_APPLICATION_CREDENTIALS environment variable is unset")
 	}
 	bigmachine.RegisterSystem(systemName, new(System))
 }
 
 type System struct {
-	Project string
-	Zone    string
+	Project        string
+	Zone           string
+	BootstrapImage string
 }
 
 func (s *System) Exit(code int) {
@@ -46,7 +54,13 @@ func (s *System) Exit(code int) {
 func (s *System) HTTPClient() *http.Client {
 	// TODO(dazwilkin) not yet implement
 	log.Println("[gce:HTTPClient] not yet implemented")
-	return &http.Client{}
+	transport := &http.Transport{
+		Dial: (&net.Dialer{Timeout: httpTimeout}).Dial,
+		// TLSClientConfig:     s.clientConfig,
+		TLSHandshakeTimeout: httpTimeout,
+	}
+	http2.ConfigureTransport(transport)
+	return &http.Client{Transport: transport}
 
 }
 func (s *System) KeepaliveConfig() (period, timeout, rpcTimeout time.Duration) {
@@ -56,9 +70,18 @@ func (s *System) KeepaliveConfig() (period, timeout, rpcTimeout time.Duration) {
 	rpcTimeout = 2 * time.Minute
 	return
 }
-func (s *System) ListenAndServe(addr string, handle http.Handler) error {
+func (s *System) ListenAndServe(addr string, handler http.Handler) error {
 	log.Println("[gce:ListenAndServe] Entered")
-	return nil
+	// config.ClientAuth = tls.RequireAndVerifyClientCert
+	server := &http.Server{
+		// TLSConfig: config,
+		Addr:    addr,
+		Handler: handler,
+	}
+	http2.ConfigureServer(server, &http2.Server{
+		// MaxConcurrentStreams: maxConcurrentStreams,
+	})
+	return server.ListenAndServeTLS("", "")
 }
 func (s *System) Main() error {
 	log.Println("[gce:Main] Entered")
@@ -75,8 +98,11 @@ func (s *System) Name() string {
 }
 func (s *System) Init(b *bigmachine.B) error {
 	log.Println("[gce:Init] Entered")
+	// TODO(dazwilkin) Investigate https://godoc.org/github.com/grailbio/base/config per https://github.com/grailbio/bigmachine/issues/1
+	// TODO(dazwilkin) Assuming environmental variables (used during development) for the System configuration
 	s.Project = os.Getenv("PROJECT")
 	s.Zone = os.Getenv("ZONE")
+	s.BootstrapImage = fmt.Sprintf("%s:%s", os.Getenv("IMG"), os.Getenv("TAG"))
 	return nil
 }
 func (s *System) Read(ctx context.Context, m *bigmachine.Machine, filename string) (io.Reader, error) {
@@ -117,10 +143,11 @@ func (s *System) Start(ctx context.Context, count int) ([]*bigmachine.Machine, e
 	// Results are Operations or Errors
 	for i := 0; i < count; i++ {
 		wg.Add(1)
+		// TODO(dazwilkin) Convenient (during testing) to name this way; can't create more if existing instances haven't been deleted
 		name := fmt.Sprintf("%s-%02d", prefix, i)
 		go func(name string) {
 			defer wg.Done()
-			machine, err := Create(ctx, s.Project, s.Zone, name)
+			machine, err := Create(ctx, s.Project, s.Zone, name, s.BootstrapImage)
 			ch <- Result{
 				machine: machine,
 				err:     err,
