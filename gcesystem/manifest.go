@@ -8,13 +8,13 @@ import (
 )
 
 type Manifest struct {
-	Spec Spec
+	Spec Spec `yaml:"spec"`
 }
 
 // Runtime restriction that only one container is permitted
 type Spec struct {
-	Containers []Container
-	Volumes    []Volume
+	Containers []Container `yaml:"containers"`
+	Volumes    []Volume    `yaml:"volumes,omitempty"`
 }
 type Container struct {
 	Name          string        `yaml:"name"`
