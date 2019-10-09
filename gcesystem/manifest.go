@@ -38,7 +38,9 @@ type Volume struct {
 	Name     string   `yaml:"name"`
 	EmptyDir EmptyDir `yaml:"emptyDir"`
 }
-type EmptyDir struct{}
+type EmptyDir struct {
+	Medium string `yaml:"medium"`
+}
 
 func (m *Manifest) String() (string, error) {
 	l := len(m.Spec.Containers)
