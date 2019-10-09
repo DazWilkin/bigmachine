@@ -83,8 +83,10 @@ func Create(ctx context.Context, project, zone, name, image string) (*bigmachine
 		},
 		Volumes: []Volume{
 			Volume{
-				Name:     "tmpfs",
-				EmptyDir: EmptyDir{},
+				Name: "tmpfs",
+				EmptyDir: EmptyDir{
+					Medium: "Memory",
+				},
 			},
 		},
 	},
