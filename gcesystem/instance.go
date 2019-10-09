@@ -68,8 +68,9 @@ func Create(ctx context.Context, project, zone, name, image string) (*bigmachine
 					},
 					Env{
 						Name: "BIGMACHINE_ADDR",
-						// TODO(dazwilkin) dislike that this is a global variable in gcesystem namespace
-						Value: bigmachineAddr,
+						// TODO(dazwilkin) Dislike that this is a global variable in gcesystem namespace
+						// TODO(dazwilkin) Should this be ":" or "0.0.0.0:"?
+						Value: fmt.Sprintf("0.0.0.0:%d", port),
 					},
 				},
 			},
@@ -142,10 +143,11 @@ func Create(ctx context.Context, project, zone, name, image string) (*bigmachine
 	log.Printf("[Create] %s: tagged [HTTP|HTTPS] to be caught by default firewall rules", name)
 	log.Printf("[Create] %s: Google Cloud Logging enabled", name)
 
+	// Wait (or timeout) for the instance to be "RUNNING"
 	start := time.Now()
 	timeout := 5 * time.Second
 	for operation.Status != "RUNNING" && time.Since(start) < timeout {
-		log.Println(operation.Status)
+		log.Printf("[Create] %s: Sleeping status %s", name, operation.Status)
 		time.Sleep(250 * time.Millisecond)
 		service.ZoneOperations.Get(project, zone, operation.Name).Context(ctx).Do()
 	}
@@ -154,7 +156,7 @@ func Create(ctx context.Context, project, zone, name, image string) (*bigmachine
 		log.Printf("[Create] %s: create unsuccessful -- timed-out", name)
 	}
 
-	// Now that the instance is stable; await a NatIP !!
+	// Wait (or timeout) for the instance to be assigned an external IP
 	addr := ""
 	start = time.Now()
 	timeout = 5 * time.Second
@@ -174,6 +176,7 @@ func Create(ctx context.Context, project, zone, name, image string) (*bigmachine
 
 		addr = instance.NetworkInterfaces[0].AccessConfigs[0].NatIP
 		if addr == "" {
+			log.Printf("[Create] %s: Sleeping external IP unavailable", name)
 			time.Sleep(250 * time.Millisecond)
 		}
 	}
@@ -186,7 +189,7 @@ func Create(ctx context.Context, project, zone, name, image string) (*bigmachine
 
 	// TODO(dazwilkin) We lose ownership of the instance here !?
 	return &bigmachine.Machine{
-		Addr:     addr,
+		Addr:     fmt.Sprintf("http://%s:%d", addr, port),
 		Maxprocs: 0,
 		NoExec:   false,
 	}, nil

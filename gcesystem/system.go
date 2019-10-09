@@ -16,9 +16,9 @@ import (
 )
 
 const (
-	bigmachineAddr = ":8443"
-	prefix         = "bigmachine"
-	systemName     = "gce"
+	port       = 8443
+	prefix     = "bigmachine"
+	systemName = "gce"
 )
 const (
 	httpTimeout = 30 * time.Second
@@ -72,7 +72,7 @@ func (s *System) ListenAndServe(addr string, handler http.Handler) error {
 	log.Println("[gce:ListenAndServe] Entered")
 	if addr == "" {
 		log.Printf("[gce:ListenAndServe] no address provided")
-		addr = bigmachineAddr
+		addr = fmt.Sprintf(":%d", port)
 	}
 	log.Printf("[gce:ListenAndServe] address: %s", addr)
 	// config.ClientAuth = tls.RequireAndVerifyClientCert
