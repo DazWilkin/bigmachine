@@ -20,8 +20,8 @@ import (
 
 	"github.com/grailbio/base/log"
 	"github.com/grailbio/bigmachine"
-	"github.com/grailbio/bigmachine/compute_engine"
 	"github.com/grailbio/bigmachine/ec2system"
+	"github.com/grailbio/bigmachine/gcesystem"
 )
 
 var (
@@ -44,7 +44,7 @@ func Start() *bigmachine.B {
 			OnDemand:     *ondemand,
 		}
 	case "gce":
-		sys = &compute_engine.System{
+		sys = &gcesystem.System{
 			// TOOD(dazwilkin) This should be configurable either through the command-line or environment
 		}
 

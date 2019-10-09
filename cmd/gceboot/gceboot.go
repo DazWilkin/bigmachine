@@ -5,12 +5,12 @@ import (
 
 	"github.com/grailbio/base/log"
 	"github.com/grailbio/bigmachine"
-	"github.com/grailbio/bigmachine/compute_engine"
+	"github.com/grailbio/bigmachine/gcesystem"
 )
 
 func main() {
 	log.AddFlags()
 	flag.Parse()
-	_ = bigmachine.Start(compute_engine.Instance)
+	_ = bigmachine.Start(gcesystem.Instance)
 	log.Fatal("[GCE] bigmachine.Start returned")
 }

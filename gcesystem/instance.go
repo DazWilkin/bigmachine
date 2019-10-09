@@ -1,4 +1,4 @@
-package compute_engine
+package gcesystem
 
 import (
 	"context"
@@ -27,8 +27,10 @@ var (
 	}
 )
 
+// TODO(dazwilkin) would it be preferable to represent this as a new type?
 var service *compute.Service
 
+// NewClient is a super-thin wrapper around Compute Engine's NewService call
 func NewClient(ctx context.Context) (err error) {
 	service, err = compute.NewService(ctx)
 	return
@@ -47,8 +49,8 @@ func ProjectNumber(id string) (string, error) {
 // Create creates a Compute Engine instance returning a bigmachine.Machine
 // TODO(dazwilkin) Nothing is installed on the Debian instance: should it be a Container OS? What bootstrap (container|binary)?
 func Create(ctx context.Context, project, zone, name, image string) (*bigmachine.Machine, error) {
-	log.Printf("[Instance:Create] %s: creating", name)
-	log.Printf("[Instance:Create] %s: using bootstrap image: %s", name, image)
+	log.Printf("[Create] %s: defining", name)
+	log.Printf("[Create] %s: using bootstrap image: %s", name, image)
 	manifest := &Manifest{Spec: Spec{
 		Containers: []Container{
 			Container{
@@ -62,11 +64,12 @@ func Create(ctx context.Context, project, zone, name, image string) (*bigmachine
 					},
 					Env{
 						Name:  "BIGMACHINE_SYSTEM",
-						Value: "gce",
+						Value: systemName,
 					},
 					Env{
-						Name:  "BIGMACHINE_ADDR",
-						Value: ":8443",
+						Name: "BIGMACHINE_ADDR",
+						// TODO(dazwilkin) dislike that this is a global variable in gcesystem namespace
+						Value: bigmachineAddr,
 					},
 				},
 			},
@@ -134,7 +137,10 @@ func Create(ctx context.Context, project, zone, name, image string) (*bigmachine
 			},
 		},
 	}
+	log.Printf("[Create] %s: being created", name)
 	operation, err := service.Instances.Insert(project, zone, instance).Context(ctx).Do()
+	log.Printf("[Create] %s: tagged [HTTP|HTTPS] to be caught by default firewall rules", name)
+	log.Printf("[Create] %s: Google Cloud Logging enabled", name)
 
 	start := time.Now()
 	timeout := 5 * time.Second
@@ -145,18 +151,42 @@ func Create(ctx context.Context, project, zone, name, image string) (*bigmachine
 	}
 	if operation.Status != "RUNNING" {
 		// timed-out
-		log.Println("Instance didn't create")
+		log.Printf("[Create] %s: create unsuccessful -- timed-out", name)
 	}
 
-	// Now that the instance is stable
-	instance, err = service.Instances.Get(project, zone, name).Context(ctx).Do()
-	if err != nil {
-		log.Printf("[gce:Start:go] %s: %s", name, err)
+	// Now that the instance is stable; await a NatIP !!
+	addr := ""
+	start = time.Now()
+	timeout = 5 * time.Second
+	for addr == "" && time.Since(start) < timeout {
+		instance, err = service.Instances.Get(project, zone, name).Context(ctx).Do()
+		if err != nil {
+			log.Printf("[Create] %s: failed to retrieve -- %s", name, err)
+		}
+
+		num := len(instance.NetworkInterfaces)
+		if num == 0 {
+			return nil, fmt.Errorf("[Create] %s: created but has no network interfaces", name)
+		}
+		if num > 1 {
+			log.Printf("[Create] %s: multiple (%d) network interfaces are available, using first(0)", name, num)
+		}
+
+		addr = instance.NetworkInterfaces[0].AccessConfigs[0].NatIP
+		if addr == "" {
+			time.Sleep(250 * time.Millisecond)
+		}
 	}
+	// If we get here and the 1st NatIP remains unset, then the loop must have timed-out
+	if addr == "" {
+		return nil, fmt.Errorf("[Create] %s: created but unable to get obtain external IP", name)
+	}
+
+	log.Printf("[Create] %s: created (%s)", name, addr)
 
 	// TODO(dazwilkin) We lose ownership of the instance here !?
 	return &bigmachine.Machine{
-		Addr:     instance.NetworkInterfaces[0].AccessConfigs[0].NatIP,
+		Addr:     addr,
 		Maxprocs: 0,
 		NoExec:   false,
 	}, nil

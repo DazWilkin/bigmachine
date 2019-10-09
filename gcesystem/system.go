@@ -1,4 +1,4 @@
-package compute_engine
+package gcesystem
 
 import (
 	"context"
@@ -16,10 +16,9 @@ import (
 )
 
 const (
-	systemName = "gce"
-)
-const (
-	prefix = "bigmachine"
+	bigmachineAddr = ":8443"
+	prefix         = "bigmachine"
+	systemName     = "gce"
 )
 const (
 	httpTimeout = 30 * time.Second
@@ -53,15 +52,14 @@ func (s *System) Exit(code int) {
 }
 func (s *System) HTTPClient() *http.Client {
 	// TODO(dazwilkin) not yet implement
-	log.Println("[gce:HTTPClient] not yet implemented")
+	log.Println("[gce:HTTPClient] Entered")
 	transport := &http.Transport{
-		Dial: (&net.Dialer{Timeout: httpTimeout}).Dial,
-		// TLSClientConfig:     s.clientConfig,
-		TLSHandshakeTimeout: httpTimeout,
+		Dial: (&net.Dialer{
+			Timeout: httpTimeout,
+		}).Dial,
 	}
 	http2.ConfigureTransport(transport)
 	return &http.Client{Transport: transport}
-
 }
 func (s *System) KeepaliveConfig() (period, timeout, rpcTimeout time.Duration) {
 	log.Println("[gce:KeepAliveConfig] Entered")
@@ -72,6 +70,11 @@ func (s *System) KeepaliveConfig() (period, timeout, rpcTimeout time.Duration) {
 }
 func (s *System) ListenAndServe(addr string, handler http.Handler) error {
 	log.Println("[gce:ListenAndServe] Entered")
+	if addr == "" {
+		log.Printf("[gce:ListenAndServe] no address provided")
+		addr = bigmachineAddr
+	}
+	log.Printf("[gce:ListenAndServe] address: %s", addr)
 	// config.ClientAuth = tls.RequireAndVerifyClientCert
 	server := &http.Server{
 		// TLSConfig: config,
@@ -81,11 +84,12 @@ func (s *System) ListenAndServe(addr string, handler http.Handler) error {
 	http2.ConfigureServer(server, &http2.Server{
 		// MaxConcurrentStreams: maxConcurrentStreams,
 	})
-	return server.ListenAndServeTLS("", "")
+	//return server.ListenAndServeTLS("", "")
+	return server.ListenAndServe()
 }
 func (s *System) Main() error {
 	log.Println("[gce:Main] Entered")
-	return nil
+	return http.ListenAndServe(":3333", nil)
 }
 func (s *System) Maxprocs() int {
 	log.Println("[gce:Maxprocs] Entered")
@@ -177,7 +181,7 @@ func (s *System) Start(ctx context.Context, count int) ([]*bigmachine.Machine, e
 	if failures > 0 {
 		err = fmt.Errorf("[gcs:Start] %d/%d machines were not created", failures, count)
 	}
-	log.Println("[gce:Exit] Completed")
+	log.Println("[gce:Start] Completed")
 	return machines, err
 }
 func (s *System) Tail(ctx context.Context, m *bigmachine.Machine) (io.Reader, error) {

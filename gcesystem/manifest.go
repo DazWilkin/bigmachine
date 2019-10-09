@@ -1,4 +1,4 @@
-package compute_engine
+package gcesystem
 
 import (
 	"fmt"
