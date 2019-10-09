@@ -14,25 +14,31 @@ type Manifest struct {
 // Runtime restriction that only one container is permitted
 type Spec struct {
 	Containers []Container
+	Volumes    []Volume
 }
 type Container struct {
-	Name          string   `yaml:"name"`
-	Image         string   `yaml:"image"`
-	Stdin         bool     `yaml:"stdin,omitempty"`
-	TTY           bool     `yaml:"tty,omitempty"`
-	RestartPolicy string   `yaml:"restartPolicy,omitempty"`
-	Args          []string `yaml:"args,omitempty"`
-	Env           []Env    `yaml:"env,omitempty"`
-}
-type Image struct {
-	Registry   string
-	Repository string
-	Tag        string
+	Name          string        `yaml:"name"`
+	Image         string        `yaml:"image"`
+	Stdin         bool          `yaml:"stdin,omitempty"`
+	TTY           bool          `yaml:"tty,omitempty"`
+	RestartPolicy string        `yaml:"restartPolicy,omitempty"`
+	Args          []string      `yaml:"args,omitempty"`
+	Env           []Env         `yaml:"env,omitempty"`
+	VolumeMounts  []VolumeMount `yaml:"volumeMounts,omitempty"`
 }
 type Env struct {
 	Name  string `yaml:"name"`
 	Value string `yaml:"value"`
 }
+type VolumeMount struct {
+	Name      string `yaml:"name"`
+	MountPath string `yaml:"mountPath"`
+}
+type Volume struct {
+	Name     string   `yaml:"name"`
+	EmptyDir EmptyDir `yaml:"emptyDir"`
+}
+type EmptyDir struct{}
 
 func (m *Manifest) String() (string, error) {
 	l := len(m.Spec.Containers)

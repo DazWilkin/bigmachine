@@ -56,7 +56,13 @@ func Create(ctx context.Context, project, zone, name, image string) (*bigmachine
 			Container{
 				Name:  "gceboot",
 				Image: image,
-				Args:  []string{"-log=debug"},
+				VolumeMounts: []VolumeMount{
+					VolumeMount{
+						Name:      "tmpfs",
+						MountPath: "/tmp",
+					},
+				},
+				Args: []string{"-log=debug"},
 				Env: []Env{
 					Env{
 						Name:  "BIGMACHINE_MODE",
@@ -73,6 +79,12 @@ func Create(ctx context.Context, project, zone, name, image string) (*bigmachine
 						Value: fmt.Sprintf("0.0.0.0:%d", port),
 					},
 				},
+			},
+		},
+		Volumes: []Volume{
+			Volume{
+				Name:     "tmpfs",
+				EmptyDir: EmptyDir{},
 			},
 		},
 	},
