@@ -11,6 +11,8 @@ Uses Google's API Client Library for Compute v1; there is no Golang Cloud Client
 
 ## Docker
 
+Whenever changes are made to gcesystem, the image needs to be rebuilt so that the instances are deployed with the current (!) container
+
 I'm having to:
 ```bash
 gcloud auth print-access-token \
