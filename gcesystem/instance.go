@@ -161,7 +161,7 @@ func Create(ctx context.Context, project, zone, name, image string) (*bigmachine
 	start := time.Now()
 	timeout := 5 * time.Second
 	for operation.Status != "RUNNING" && time.Since(start) < timeout {
-		log.Printf("[Create] %s: Sleeping status %s", name, operation.Status)
+		log.Printf("[Create] %s: Sleeping -- status %s", name, operation.Status)
 		time.Sleep(250 * time.Millisecond)
 		service.ZoneOperations.Get(project, zone, operation.Name).Context(ctx).Do()
 	}
@@ -190,7 +190,7 @@ func Create(ctx context.Context, project, zone, name, image string) (*bigmachine
 
 		addr = instance.NetworkInterfaces[0].AccessConfigs[0].NatIP
 		if addr == "" {
-			log.Printf("[Create] %s: Sleeping external IP unavailable", name)
+			log.Printf("[Create] %s: Sleeping -- external IP unavailable", name)
 			time.Sleep(250 * time.Millisecond)
 		}
 	}
