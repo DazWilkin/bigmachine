@@ -54,9 +54,10 @@ func (s *System) HTTPClient() *http.Client {
 	// TODO(dazwilkin) not yet implement
 	log.Println("[gce:HTTPClient] Entered")
 	transport := &http.Transport{
-		Dial: (&net.Dialer{
+		// TODO(dazwilkin) Replaced deprecated "Dial" with "DialContext"
+		DialContext: (&net.Dialer{
 			Timeout: httpTimeout,
-		}).Dial,
+		}).DialContext,
 	}
 	http2.ConfigureTransport(transport)
 	return &http.Client{Transport: transport}
