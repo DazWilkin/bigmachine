@@ -29,9 +29,9 @@ docker push ${IMG}:${TAG}
 
 Hmmm:
 ```bash
-sed --in-place=.bak "s|\"TAG\": \"[0-9a-f]{4}\"|\"TAG\": \"${TAG}\"|g" ./.vscode/launch.json
+sed --in-place=.bak "s|\"TAG\": \"[0-9a-f]\{40\}\"|\"TAG\": \"${TAG}\"|g" ./.vscode/launch.json
 ```
-
+**NB** The repetition must be escpaed too `\{40\}`
 
 **NB** We'll reuse `${IMG}` and `${TAG}` in the next section
 
