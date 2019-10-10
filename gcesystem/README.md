@@ -27,6 +27,12 @@ docker build --tag=${IMG}:${TAG} --file=cmd/gceboot/Dockerfile .
 docker push ${IMG}:${TAG}
 ```
 
+Hmmm:
+```bash
+sed --in-place=.bak "s|\"TAG\": \"[0-9a-f]{4}\"|\"TAG\": \"${TAG}\"|g" ./.vscode/launch.json
+```
+
+
 **NB** We'll reuse `${IMG}` and `${TAG}` in the next section
 
 ## Run
