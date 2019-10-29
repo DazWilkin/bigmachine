@@ -4,18 +4,24 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/grailbio/base/retry"
 	"github.com/grailbio/bigmachine"
+	"golang.org/x/crypto/ssh"
 	"golang.org/x/net/http2"
 )
 
 const (
+	key        = "/home/dazwilkin/.ssh/google_compute_engine"
 	port       = 8443
 	prefix     = "bigmachine"
 	systemName = "gce"
@@ -92,9 +98,13 @@ func (s *System) Main() error {
 	log.Println("[gce:Main] Entered")
 	return http.ListenAndServe(":3333", nil)
 }
+
+// MaxProcs returns the number of vCPUs in the instance
+// TODO(dazwilkin) Implement MaxProcs so that it returns the actual number of vCPUs on the instance
 func (s *System) Maxprocs() int {
 	log.Println("[gce:Maxprocs] Entered")
-	return 0
+	log.Println("[gce:Maxprocs] Return constant value (1) -- implement to return actual vCPUs")
+	return 1
 }
 
 // Name returns the name of this system
@@ -114,8 +124,25 @@ func (s *System) Read(ctx context.Context, m *bigmachine.Machine, filename strin
 	log.Println("[gce:Read] Entered")
 	return nil, nil
 }
+
+// TODO(dazwilkin) there's little (insufficient?) data for this call: which (how many?) machines? no context
 func (s *System) Shutdown() {
 	log.Println("[gce:Shutdown] Entered")
+	ctx := context.TODO()
+	err := NewClient(ctx)
+	if err != nil {
+		log.Println("[gce:Shutdown] unable to delete Compute Engine client")
+	}
+	// Determine which instances belong to bigmachine using the Tag used when Create'ing
+	names, err := List(ctx, s.Project, s.Zone)
+	if err != nil {
+		log.Println("[gce:Shutdown] unable to enumerate machines")
+	}
+	// Delete these instances
+	for _, name := range names {
+		log.Printf("[gce:Shutdown] Deleting %s", name)
+		Delete(ctx, s.Project, s.Zone, name)
+	}
 }
 
 // Start attempts to create 'count' GCE instances returns a list of machines and (!) any failures
@@ -187,5 +214,75 @@ func (s *System) Start(ctx context.Context, count int) ([]*bigmachine.Machine, e
 }
 func (s *System) Tail(ctx context.Context, m *bigmachine.Machine) (io.Reader, error) {
 	log.Println("[gce:Tail] Entered")
-	return nil, nil
+	u, err := url.Parse(m.Addr)
+	if err != nil {
+		return nil, err
+	}
+	return s.run(ctx, u.Hostname(), "sudo journalctl --unit=bootmachine --output=cat --follow"), nil
+}
+func (s *System) run(ctx context.Context, addr, command string) io.Reader {
+	r, w := io.Pipe()
+	go func() {
+		var err error
+		for retries := 0; ; retries++ {
+			err = s.runSSH(addr, w, command)
+			if err == nil {
+				break
+			}
+			log.Printf("tail %v: %v", addr, err)
+			if strings.HasPrefix(err.Error(), "ssh: unable to authenticate") {
+				break
+			}
+			if _, ok := err.(*ssh.ExitError); ok {
+				break
+			}
+			var sshRetryPolicy = retry.Backoff(time.Second, 10*time.Second, 1.5)
+			if err = retry.Wait(ctx, sshRetryPolicy, retries); err != nil {
+				break
+			}
+		}
+		w.CloseWithError(err)
+	}()
+	return r
+}
+func (s *System) runSSH(addr string, w io.Writer, command string) error {
+	conn, err := s.dialSSH(addr)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	sess, err := conn.NewSession()
+	if err != nil {
+		return err
+	}
+	defer sess.Close()
+	sess.Stdout = w
+	sess.Stderr = w
+	return sess.Run(command)
+}
+func (s *System) dialSSH(addr string) (*ssh.Client, error) {
+	// TOOD(dazwilkin) Determine gCloud current user correctly
+	log.Println("[system:dialSSH] warning -- defaults to 'dazwilkin' user")
+	config := &ssh.ClientConfig{
+		User: "dazwilkin",
+		Auth: []ssh.AuthMethod{
+			s.publicKey(),
+		},
+		HostKeyCallback: func(hostname string, remote net.Addr, key ssh.PublicKey) error {
+			return nil
+		},
+		Timeout: 15 * time.Second,
+	}
+	return ssh.Dial("tcp", addr+":22", config)
+}
+func (s *System) publicKey() ssh.AuthMethod {
+	buffer, err := ioutil.ReadFile(key)
+	if err != nil {
+		log.Fatal(err)
+	}
+	key, err := ssh.ParsePrivateKey(buffer)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return ssh.PublicKeys(key)
 }
