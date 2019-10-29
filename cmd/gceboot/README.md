@@ -15,3 +15,5 @@ TAG=$(git rev-parse HEAD)
 docker build --tag=${REPO}:${TAG} --file=cmd/gceboot/Dockerfile .
 docker push ${REPO}:${TAG}
 ```
+
+Ensure the environment variable `TAG` is set when running e.g. `cmd/bigpi/bigpi.go` or debugging (`launch.json`) too
