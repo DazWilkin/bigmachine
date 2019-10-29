@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/grailbio/bigmachine"
+
 	compute "google.golang.org/api/compute/v1"
 )
 
@@ -128,6 +129,7 @@ func Create(ctx context.Context, project, zone, name, image string) (*bigmachine
 				},
 			},
 		},
+		// TODO(dazwilkin) the Tag 'bigmachine' will be utilized by the Delete call to identify which instances are to be deleted
 		Tags: &compute.Tags{
 			Items: []string{
 				"bigmachine",
@@ -207,4 +209,54 @@ func Create(ctx context.Context, project, zone, name, image string) (*bigmachine
 		Maxprocs: 0,
 		NoExec:   false,
 	}, nil
+}
+
+// Delete deletes a Compute Engine instance
+func Delete(ctx context.Context, project, zone, name string) error {
+	operation, err := service.Instances.Delete(project, zone, name).Context(ctx).Do()
+	if err != nil {
+		return err
+	}
+
+	// Wait (or timeout) for the instance to be "RUNNING"
+	start := time.Now()
+	timeout := 5 * time.Second
+	for operation.Status != "RUNNING" && time.Since(start) < timeout {
+		log.Printf("[Delete] %s: Sleeping -- status %s", name, operation.Status)
+		time.Sleep(250 * time.Millisecond)
+		service.ZoneOperations.Get(project, zone, operation.Name).Context(ctx).Do()
+	}
+	if operation.Status != "RUNNING" {
+		// timed-out
+		return fmt.Errorf("[Delete] %s: delete unsuccessful -- timed-out", name)
+	}
+	// Succeeded
+	return nil
+}
+
+// TODO(dazwilkin) should this return []bigmachine.Machine to match Create?
+func List(ctx context.Context, project, zone string) ([]string, error) {
+	var result []string
+
+	// Hacky but use a pointer to a string: initially nil
+	// After being set when there are no more NextPageToken(s), it will become ""
+	var pageToken *string
+	for pageToken != nil || *pageToken != "" {
+		// TODO(dazwilkin) filter by Network Tag "bigmachine"
+		if pageToken == nil {
+			*pageToken = ""
+		}
+		log.Println("[List] debugging MaxResults=2 -- remove this")
+		instancesList, err := service.Instances.List(project, zone).PageToken(*pageToken).MaxResults(2).Filter("").Context(ctx).Do()
+		if err != nil {
+			return nil, err
+		}
+
+		for _, instance := range instancesList.Items {
+			log.Printf("[List] %s", instance.Name)
+			result = append(result, instance.Name)
+		}
+		*pageToken = instancesList.NextPageToken
+	}
+	return result, nil
 }
