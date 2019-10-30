@@ -40,7 +40,7 @@ func init() {
 	if os.Getenv("GOOGLE_APPLICATION_CREDENTIALS") == "" {
 		// TODO(dazwilkin) When this System is running locally, the environment variable is required. When this System is running on a GCE Instance, it will be obtained automatically
 		// TODO(dazwilkin) Possibly check for the Metadata Service here to help with this decision?
-		log.Println("Compute Engine backend uses Application Default Credentials. GOOGLE_APPLICATION_CREDENTIALS environment variable is unset")
+		log.Print("Compute Engine backend uses Application Default Credentials. GOOGLE_APPLICATION_CREDENTIALS environment variable is unset")
 	}
 	bigmachine.RegisterSystem(systemName, new(System))
 }
@@ -52,12 +52,12 @@ type System struct {
 }
 
 func (s *System) Exit(code int) {
-	log.Println("[gce:Exit] Entered")
+	log.Print("[gce:Exit] Entered")
 	os.Exit(code)
 }
 func (s *System) HTTPClient() *http.Client {
 	// TODO(dazwilkin) not yet implement
-	log.Println("[gce:HTTPClient] Entered")
+	log.Print("[gce:HTTPClient] Entered")
 	transport := &http.Transport{
 		// TODO(dazwilkin) Replaced deprecated "Dial" with "DialContext"
 		DialContext: (&net.Dialer{
@@ -68,14 +68,14 @@ func (s *System) HTTPClient() *http.Client {
 	return &http.Client{Transport: transport}
 }
 func (s *System) KeepaliveConfig() (period, timeout, rpcTimeout time.Duration) {
-	log.Println("[gce:KeepAliveConfig] Entered")
+	log.Print("[gce:KeepAliveConfig] Entered")
 	period = time.Minute
 	timeout = 10 * time.Minute
 	rpcTimeout = 2 * time.Minute
 	return
 }
 func (s *System) ListenAndServe(addr string, handler http.Handler) error {
-	log.Println("[gce:ListenAndServe] Entered")
+	log.Print("[gce:ListenAndServe] Entered")
 	if addr == "" {
 		log.Printf("[gce:ListenAndServe] no address provided")
 		addr = fmt.Sprintf(":%d", port)
@@ -94,15 +94,15 @@ func (s *System) ListenAndServe(addr string, handler http.Handler) error {
 	return server.ListenAndServe()
 }
 func (s *System) Main() error {
-	log.Println("[gce:Main] Entered")
+	log.Print("[gce:Main] Entered")
 	return http.ListenAndServe(":3333", nil)
 }
 
 // MaxProcs returns the number of vCPUs in the instance
 // TODO(dazwilkin) Implement MaxProcs so that it returns the actual number of vCPUs on the instance
 func (s *System) Maxprocs() int {
-	log.Println("[gce:Maxprocs] Entered")
-	log.Println("[gce:Maxprocs] Return constant value (1) -- implement to return actual vCPUs")
+	log.Print("[gce:Maxprocs] Entered")
+	log.Print("[gce:Maxprocs] Return constant value (1) -- implement to return actual vCPUs")
 	return 1
 }
 
@@ -111,7 +111,7 @@ func (s *System) Name() string {
 	return systemName
 }
 func (s *System) Init(b *bigmachine.B) error {
-	log.Println("[gce:Init] Entered")
+	log.Print("[gce:Init] Entered")
 	// TODO(dazwilkin) Investigate https://godoc.org/github.com/grailbio/base/config per https://github.com/grailbio/bigmachine/issues/1
 	// TODO(dazwilkin) Assuming environmental variables (used during development) for the System configuration
 	s.Project = os.Getenv("PROJECT")
@@ -120,7 +120,7 @@ func (s *System) Init(b *bigmachine.B) error {
 	return nil
 }
 func (s *System) Read(ctx context.Context, m *bigmachine.Machine, filename string) (io.Reader, error) {
-	log.Println("[gce:Read] Entered")
+	log.Print("[gce:Read] Entered")
 	u, err := url.Parse(m.Addr)
 	if err != nil {
 		return nil, err
@@ -130,16 +130,16 @@ func (s *System) Read(ctx context.Context, m *bigmachine.Machine, filename strin
 
 // Per Marius this is a graceful shutdown of System that indirectly (!) results in machine's Exit'ing
 func (s *System) Shutdown() {
-	log.Println("[gce:Shutdown] Entered")
+	log.Print("[gce:Shutdown] Entered")
 	ctx := context.TODO()
 	err := NewClient(ctx)
 	if err != nil {
-		log.Println("[gce:Exit] unable to delete Compute Engine client")
+		log.Print("[gce:Exit] unable to delete Compute Engine client")
 	}
 	// Determine which instances belong to bigmachine using the Tag used when Create'ing
 	names, err := List(ctx, s.Project, s.Zone)
 	if err != nil {
-		log.Println("[gce:Exit] unable to enumerate machines")
+		log.Print("[gce:Exit] unable to enumerate machines")
 	}
 	// Delete these instances
 	for _, name := range names {
@@ -150,9 +150,9 @@ func (s *System) Shutdown() {
 
 // Start attempts to create 'count' GCE instances returns a list of machines and (!) any failures
 func (s *System) Start(ctx context.Context, count int) ([]*bigmachine.Machine, error) {
-	log.Println("[gce:Start] Entered")
+	log.Print("[gce:Start] Entered")
 	if count == 0 {
-		log.Println("[gce:Start] warning: request to create 0 (zero) instances")
+		log.Print("[gce:Start] warning: request to create 0 (zero) instances")
 		return []*bigmachine.Machine{}, nil
 	}
 	if count < 0 {
@@ -190,33 +190,33 @@ func (s *System) Start(ctx context.Context, count int) ([]*bigmachine.Machine, e
 		}(name)
 	}
 
-	log.Println("[gce:Start] await completion of Go routines")
+	log.Print("[gce:Start] await completion of Go routines")
 	wg.Wait()
-	log.Println("[gce:Start] Go routines have completed")
+	log.Print("[gce:Start] Go routines have completed")
 	close(ch)
 
 	// Proccess the channel of Results
 	// If there were errors, there will be fewer than 'count' machines
 	var machines []*bigmachine.Machine
 	var failures uint
-	log.Println("[gce:Start] Iterate over the channel")
+	log.Print("[gce:Start] Iterate over the channel")
 	for i := range ch {
 		if i.err != nil {
 			log.Printf("[gce:Start:go] %s", err)
 			failures = failures + 1
 		}
-		log.Println("[gce:Start] Adding bigmachine")
+		log.Print("[gce:Start] Adding bigmachine")
 		machines = append(machines, i.machine)
 	}
-	log.Println("[gce:Start] Done w/ channel")
+	log.Print("[gce:Start] Done w/ channel")
 	if failures > 0 {
 		err = fmt.Errorf("[gcs:Start] %d/%d machines were not created", failures, count)
 	}
-	log.Println("[gce:Start] Completed")
+	log.Print("[gce:Start] Completed")
 	return machines, err
 }
 func (s *System) Tail(ctx context.Context, m *bigmachine.Machine) (io.Reader, error) {
-	log.Println("[gce:Tail] Entered")
+	log.Print("[gce:Tail] Entered")
 	u, err := url.Parse(m.Addr)
 	if err != nil {
 		return nil, err
@@ -270,7 +270,7 @@ func (s *System) runSSH(addr string, w io.Writer, command string) error {
 }
 func (s *System) dialSSH(addr string) (*ssh.Client, error) {
 	// TOOD(dazwilkin) Determine gCloud current user correctly
-	log.Println("[system:dialSSH] warning -- defaults to 'dazwilkin' user")
+	log.Print("[system:dialSSH] warning -- defaults to 'dazwilkin' user")
 	config := &ssh.ClientConfig{
 		User: "dazwilkin",
 		Auth: []ssh.AuthMethod{
