@@ -53,21 +53,6 @@ type System struct {
 
 func (s *System) Exit(code int) {
 	log.Println("[gce:Exit] Entered")
-	ctx := context.TODO()
-	err := NewClient(ctx)
-	if err != nil {
-		log.Println("[gce:Exit] unable to delete Compute Engine client")
-	}
-	// Determine which instances belong to bigmachine using the Tag used when Create'ing
-	names, err := List(ctx, s.Project, s.Zone)
-	if err != nil {
-		log.Println("[gce:Exit] unable to enumerate machines")
-	}
-	// Delete these instances
-	for _, name := range names {
-		log.Printf("[gce:Exit] Deleting %s", name)
-		Delete(ctx, s.Project, s.Zone, name)
-	}
 	os.Exit(code)
 }
 func (s *System) HTTPClient() *http.Client {
@@ -146,7 +131,21 @@ func (s *System) Read(ctx context.Context, m *bigmachine.Machine, filename strin
 // Per Marius this is a graceful shutdown of System that indirectly (!) results in machine's Exit'ing
 func (s *System) Shutdown() {
 	log.Println("[gce:Shutdown] Entered")
-
+	ctx := context.TODO()
+	err := NewClient(ctx)
+	if err != nil {
+		log.Println("[gce:Exit] unable to delete Compute Engine client")
+	}
+	// Determine which instances belong to bigmachine using the Tag used when Create'ing
+	names, err := List(ctx, s.Project, s.Zone)
+	if err != nil {
+		log.Println("[gce:Exit] unable to enumerate machines")
+	}
+	// Delete these instances
+	for _, name := range names {
+		log.Printf("[gce:Exit] Deleting %s", name)
+		Delete(ctx, s.Project, s.Zone, name)
+	}
 }
 
 // Start attempts to create 'count' GCE instances returns a list of machines and (!) any failures
