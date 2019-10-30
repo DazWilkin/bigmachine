@@ -39,7 +39,6 @@ func NewClient(ctx context.Context) (err error) {
 }
 
 // ProjectNumber returns a project number for a given project
-// TODO(dazwilkin) Implement Project # lookup
 func ProjectNumber(ctx context.Context, ID string) (int64, error) {
 	service, err := cloudresourcemanager.NewService(ctx)
 	if err != nil {
