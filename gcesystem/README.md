@@ -4,6 +4,13 @@
 
 Uses Google's API Client Library for Compute v1; there is no Golang Cloud Client Library for Compute :-(
 
+## Cloud Resource Manager Library
+
+Needs to be enabled:
+
+```bash
+gcloud service enable cloudresourcemanager.googleapis.com --project=${PROJECT}
+
 ## Questions
 
 + Use Container OS and deploy BigMachine bootstrap as a container
