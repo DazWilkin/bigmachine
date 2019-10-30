@@ -53,8 +53,22 @@ type System struct {
 
 func (s *System) Exit(code int) {
 	log.Println("[gce:Exit] Entered")
+	ctx := context.TODO()
+	err := NewClient(ctx)
+	if err != nil {
+		log.Println("[gce:Exit] unable to delete Compute Engine client")
+	}
+	// Determine which instances belong to bigmachine using the Tag used when Create'ing
+	names, err := List(ctx, s.Project, s.Zone)
+	if err != nil {
+		log.Println("[gce:Exit] unable to enumerate machines")
+	}
+	// Delete these instances
+	for _, name := range names {
+		log.Printf("[gce:Exit] Deleting %s", name)
+		Delete(ctx, s.Project, s.Zone, name)
+	}
 	os.Exit(code)
-
 }
 func (s *System) HTTPClient() *http.Client {
 	// TODO(dazwilkin) not yet implement
@@ -125,24 +139,10 @@ func (s *System) Read(ctx context.Context, m *bigmachine.Machine, filename strin
 	return nil, nil
 }
 
-// TODO(dazwilkin) there's little (insufficient?) data for this call: which (how many?) machines? no context
+// Per Marius this is a graceful shutdown of System that indirectly (!) results in machine's Exit'ing
 func (s *System) Shutdown() {
 	log.Println("[gce:Shutdown] Entered")
-	ctx := context.TODO()
-	err := NewClient(ctx)
-	if err != nil {
-		log.Println("[gce:Shutdown] unable to delete Compute Engine client")
-	}
-	// Determine which instances belong to bigmachine using the Tag used when Create'ing
-	names, err := List(ctx, s.Project, s.Zone)
-	if err != nil {
-		log.Println("[gce:Shutdown] unable to enumerate machines")
-	}
-	// Delete these instances
-	for _, name := range names {
-		log.Printf("[gce:Shutdown] Deleting %s", name)
-		Delete(ctx, s.Project, s.Zone, name)
-	}
+
 }
 
 // Start attempts to create 'count' GCE instances returns a list of machines and (!) any failures
@@ -218,7 +218,12 @@ func (s *System) Tail(ctx context.Context, m *bigmachine.Machine) (io.Reader, er
 	if err != nil {
 		return nil, err
 	}
-	return s.run(ctx, u.Hostname(), "sudo journalctl --unit=bootmachine --output=cat --follow"), nil
+	// TODO(dazwilkin) unclear whether there's a specific unit that's relevant; EC2 implementation using cloud-init to create `bootmachine`
+	// TODO(dazwilkin) these (container logs) would be better using gcloud logging read
+	// resource.type="gce_instance"
+	// logName="projects/${PROJECT}/logs/cos_containers"
+	// resource.labels.instance_id="${INSTANCE_ID}"
+	return s.run(ctx, u.Hostname(), "sudo journalctl --output=cat --follow"), nil
 }
 func (s *System) run(ctx context.Context, addr, command string) io.Reader {
 	r, w := io.Pipe()
