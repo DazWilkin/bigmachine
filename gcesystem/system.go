@@ -136,7 +136,11 @@ func (s *System) Init(b *bigmachine.B) error {
 }
 func (s *System) Read(ctx context.Context, m *bigmachine.Machine, filename string) (io.Reader, error) {
 	log.Println("[gce:Read] Entered")
-	return nil, nil
+	u, err := url.Parse(m.Addr)
+	if err != nil {
+		return nil, err
+	}
+	return s.run(ctx, u.Hostname(), "cat "+filename), nil
 }
 
 // Per Marius this is a graceful shutdown of System that indirectly (!) results in machine's Exit'ing
