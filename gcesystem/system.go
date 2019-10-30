@@ -202,7 +202,7 @@ func (s *System) Start(ctx context.Context, count int) ([]*bigmachine.Machine, e
 	log.Print("[gce:Start] Iterate over the channel")
 	for i := range ch {
 		if i.err != nil {
-			log.Printf("[gce:Start:go] %s", err)
+			log.Printf("[gce:Start:go] %+v", i.err)
 			failures = failures + 1
 		}
 		log.Print("[gce:Start] Adding bigmachine")
