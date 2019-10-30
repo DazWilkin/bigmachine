@@ -8,6 +8,7 @@ import (
 
 	"github.com/grailbio/bigmachine"
 
+	cloudresourcemanager "google.golang.org/api/cloudresourcemanager/v1"
 	compute "google.golang.org/api/compute/v1"
 )
 
@@ -39,12 +40,17 @@ func NewClient(ctx context.Context) (err error) {
 
 // ProjectNumber returns a project number for a given project
 // TODO(dazwilkin) Implement Project # lookup
-func ProjectNumber(id string) (string, error) {
-	if id == "bigmachine" {
-		return "343398520240", nil
+func ProjectNumber(ctx context.Context, ID string) (int64, error) {
+	service, err := cloudresourcemanager.NewService(ctx)
+	if err != nil {
+		return 0, err
 	}
-	log.Println("Not correctly implemented!")
-	return "", fmt.Errorf("ProjectNumber is not correctly implemented: returns default value for project ID 'bigmachine'")
+	p, err := service.Projects.Get(ID).Context(ctx).Do()
+	if err != nil {
+		return 0, err
+	}
+	log.Printf("[ProjectNumber] %s-->%d", ID, p.ProjectNumber)
+	return p.ProjectNumber, nil
 }
 
 // Create creates a Compute Engine instance returning a bigmachine.Machine
@@ -98,7 +104,7 @@ func Create(ctx context.Context, project, zone, name, image string) (*bigmachine
 	}
 
 	// Convert Google Project [ID --> number]
-	projectNumber, err := ProjectNumber(project)
+	projectNumber, err := ProjectNumber(ctx, project)
 	if err != nil {
 		return nil, err
 	}
@@ -149,7 +155,7 @@ func Create(ctx context.Context, project, zone, name, image string) (*bigmachine
 		ServiceAccounts: []*compute.ServiceAccount{
 			&compute.ServiceAccount{
 				// TODO(dazwilkin)
-				Email:  fmt.Sprintf("%s-compute@developer.gserviceaccount.com", projectNumber),
+				Email:  fmt.Sprintf("%d-compute@developer.gserviceaccount.com", projectNumber),
 				Scopes: scopes,
 			},
 		},
@@ -206,7 +212,7 @@ func Create(ctx context.Context, project, zone, name, image string) (*bigmachine
 	// TODO(dazwilkin) We lose ownership of the instance here !?
 	return &bigmachine.Machine{
 		Addr:     fmt.Sprintf("http://%s:%d", addr, port),
-		Maxprocs: 0,
+		Maxprocs: 1,
 		NoExec:   false,
 	}, nil
 }
@@ -246,7 +252,7 @@ func List(ctx context.Context, project, zone string) ([]string, error) {
 		if pageToken == nil {
 			*pageToken = ""
 		}
-		log.Println("[List] debugging MaxResults=2 -- remove this")
+		log.Print("[List] debugging MaxResults=2 -- remove this")
 		instancesList, err := service.Instances.List(project, zone).PageToken(*pageToken).MaxResults(2).Filter("").Context(ctx).Do()
 		if err != nil {
 			return nil, err
