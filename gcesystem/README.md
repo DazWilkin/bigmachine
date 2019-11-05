@@ -10,6 +10,7 @@ Needs to be enabled:
 
 ```bash
 gcloud service enable cloudresourcemanager.googleapis.com --project=${PROJECT}
+```
 
 ## Questions
 
