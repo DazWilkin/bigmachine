@@ -166,3 +166,4 @@ Oct 08 20:17:41 instance-1 systemd[1]: konlet-startup.service: Consumed 114ms CP
 + Operations [link](https://cloud.google.com/compute/docs/api/how-tos/api-requests-responses#handling_api_responses)
 + Compute Engine instance [life-cycle](https://cloud.google.com/compute/docs/instances/instance-life-cycle)
 + Compute Engine Container manifest [link](https://cloud.google.com/deployment-manager/docs/create-container-deployment#create_a_container_manifest)
++ Compute Engine [InstancesListCall.Pages](https://godoc.org/google.golang.org/api/compute/v1#InstancesListCall.Pages) and [example](https://cloud.google.com/compute/docs/reference/rest/v1/instances/list)
