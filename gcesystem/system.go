@@ -2,6 +2,7 @@ package gcesystem
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -15,7 +16,9 @@ import (
 	"time"
 
 	"github.com/grailbio/base/retry"
+	"github.com/grailbio/base/sync/once"
 	"github.com/grailbio/bigmachine"
+	"github.com/grailbio/bigmachine/internal/authority"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/net/http2"
 )
@@ -46,9 +49,13 @@ func init() {
 }
 
 type System struct {
-	Project        string
-	Zone           string
-	BootstrapImage string
+	Project           string
+	Zone              string
+	BootstrapImage    string
+	authority         *authority.T
+	authorityContents []byte
+	clientOnce        once.Task
+	clientConfig      *tls.Config
 }
 
 func (s *System) Exit(code int) {
@@ -58,11 +65,20 @@ func (s *System) Exit(code int) {
 func (s *System) HTTPClient() *http.Client {
 	// TODO(dazwilkin) not yet implement
 	log.Print("[gce:HTTPClient] Entered")
+	err := s.clientOnce.Do(func() (err error) {
+		s.clientConfig, _, err = s.authority.HTTPSConfig()
+		return
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
 	transport := &http.Transport{
 		// TODO(dazwilkin) Replaced deprecated "Dial" with "DialContext"
 		DialContext: (&net.Dialer{
 			Timeout: httpTimeout,
 		}).DialContext,
+		TLSClientConfig:     s.clientConfig,
+		TLSHandshakeTimeout: httpTimeout,
 	}
 	http2.ConfigureTransport(transport)
 	return &http.Client{Transport: transport}
@@ -81,17 +97,21 @@ func (s *System) ListenAndServe(addr string, handler http.Handler) error {
 		addr = fmt.Sprintf(":%d", port)
 	}
 	log.Printf("[gce:ListenAndServe] address: %s", addr)
-	// config.ClientAuth = tls.RequireAndVerifyClientCert
+	_, config, err := s.authority.HTTPSConfig()
+	if err != nil {
+		return err
+	}
+	config.ClientAuth = tls.RequireAndVerifyClientCert
 	server := &http.Server{
-		// TLSConfig: config,
-		Addr:    addr,
-		Handler: handler,
+		TLSConfig: config,
+		Addr:      addr,
+		Handler:   handler,
 	}
 	http2.ConfigureServer(server, &http2.Server{
 		// MaxConcurrentStreams: maxConcurrentStreams,
 	})
-	//return server.ListenAndServeTLS("", "")
-	return server.ListenAndServe()
+	return server.ListenAndServeTLS("", "")
+	// return server.ListenAndServe()
 }
 func (s *System) Main() error {
 	log.Print("[gce:Main] Entered")
@@ -221,12 +241,21 @@ func (s *System) Tail(ctx context.Context, m *bigmachine.Machine) (io.Reader, er
 	if err != nil {
 		return nil, err
 	}
-	// TODO(dazwilkin) unclear whether there's a specific unit that's relevant; EC2 implementation using cloud-init to create `bootmachine`
-	// TODO(dazwilkin) these (container logs) would be better using gcloud logging read
+
+	// TODO(dazwilkin) container logs would be better read using gcloud logging read
 	// resource.type="gce_instance"
 	// logName="projects/${PROJECT}/logs/cos_containers"
 	// resource.labels.instance_id="${INSTANCE_ID}"
-	return s.run(ctx, u.Hostname(), "sudo journalctl --output=cat --follow"), nil
+	// Unfortunately, this requires the ${INSTANCE_ID} which is not easily obtained from the bigmachine.Machine
+
+	// Original approach
+	// return s.run(ctx, u.Hostname(), "sudo journalctl --output=cat --follow"), nil
+
+	// Unfortunately Container-Optimized OS does not (correctly) name containers
+	// When created, the container is Named "gceboot" (see manifest Container.Name in instance.go) but this is not reflected at runtime
+	// Instead the container will be named "klt-gceboot-${SUFFIX}" where ${SUFFIX} is a 4-character lowercase (!) identifer, e.g. ktl-gceboot-rmef
+	// The following filters containers by "gceboot", grabs the (hopefully single) ID and then follows the container's logs
+	return s.run(ctx, u.Hostname(), "docker container ls --filter=name=gceboot --format=\"{{.ID}}\" | xargs docker container logs --follow"), nil
 }
 func (s *System) run(ctx context.Context, addr, command string) io.Reader {
 	r, w := io.Pipe()
