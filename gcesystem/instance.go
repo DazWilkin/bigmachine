@@ -16,6 +16,7 @@ const (
 	instanceType = "f1-micro"
 	imageProject = "cos-cloud"
 	imageFamily  = "cos-stable"
+	networkTag   = "bigmachine"
 )
 
 var (
@@ -137,7 +138,7 @@ func Create(ctx context.Context, project, zone, name, image string) (*bigmachine
 		// TODO(dazwilkin) the Tag 'bigmachine' will be utilized by the Delete call to identify which instances are to be deleted
 		Tags: &compute.Tags{
 			Items: []string{
-				"bigmachine",
+				networkTag,
 				"http-server",
 				"https-server",
 			},
@@ -242,26 +243,24 @@ func Delete(ctx context.Context, project, zone, name string) error {
 // TODO(dazwilkin) should this return []bigmachine.Machine to match Create?
 func List(ctx context.Context, project, zone string) ([]string, error) {
 	var result []string
+	instancesList := service.Instances.List(project, zone)
+	//.Filter("network.tags=" + networkTag) -- does not work with the API (https://issuetracker.google.com/issues/143463446)
+	//.MaxResults(1) -- debugging-only forces pages to contain a single element to test paging
 
-	// Hacky but use a pointer to a string: initially nil
-	// After being set when there are no more NextPageToken(s), it will become ""
-	var pageToken *string
-	for pageToken != nil || *pageToken != "" {
-		// TODO(dazwilkin) filter by Network Tag "bigmachine"
-		if pageToken == nil {
-			*pageToken = ""
-		}
-		log.Print("[List] debugging MaxResults=2 -- remove this")
-		instancesList, err := service.Instances.List(project, zone).PageToken(*pageToken).MaxResults(2).Filter("").Context(ctx).Do()
-		if err != nil {
-			return nil, err
-		}
-
-		for _, instance := range instancesList.Items {
-			log.Printf("[List] %s", instance.Name)
+	// The following: invokes the lambda function for *each* page of results, errors on error
+	// Within the lambda, iterating over all instances (in the page) permits
+	// e.g. appending all the instance names to the results slice
+	// See
+	// https://godoc.org/google.golang.org/api/compute/v1#InstancesListCall.Pages
+	// Golang example: https://cloud.google.com/compute/docs/reference/rest/v1/instances/list
+	if err := instancesList.Pages(ctx, func(page *compute.InstanceList) error {
+		for _, instance := range page.Items {
+			log.Printf("[List] instance: %s", instance.Name)
 			result = append(result, instance.Name)
 		}
-		*pageToken = instancesList.NextPageToken
+		return nil
+	}); err != nil {
+		return nil, err
 	}
 	return result, nil
 }
