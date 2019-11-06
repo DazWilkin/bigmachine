@@ -32,10 +32,14 @@ const (
 const (
 	httpTimeout = 30 * time.Second
 )
+const (
+	authorityPath = "/tmp/bigmachine.pem"
+)
 
 var _ bigmachine.System = (*System)(nil)
 
 var (
+	// Instance is a default gcemachine System
 	Instance = new(System)
 )
 
@@ -83,6 +87,26 @@ func (s *System) HTTPClient() *http.Client {
 	http2.ConfigureTransport(transport)
 	return &http.Client{Transport: transport}
 }
+func (s *System) Init(b *bigmachine.B) error {
+	log.Print("[gce:Init] Entered")
+	// TODO(dazwilkin) Investigate https://godoc.org/github.com/grailbio/base/config per https://github.com/grailbio/bigmachine/issues/1
+	// TODO(dazwilkin) Assuming environmental variables (used during development) for the System configuration
+	log.Printf("[gce:Init] Getenv(PROJECT)=%s", os.Getenv("PROJECT"))
+	s.Project = os.Getenv("PROJECT")
+	log.Printf("[gce:Init] Getenv(ZONE)=%s", os.Getenv("ZONE"))
+	s.Zone = os.Getenv("ZONE")
+	log.Printf("[gce:Init] Getenv(IMG)=%s:Getenv(TAG)=%s", os.Getenv("IMG"), os.Getenv("TAG"))
+	s.BootstrapImage = fmt.Sprintf("%s:%s", os.Getenv("IMG"), os.Getenv("TAG"))
+
+	// Mimicking  ec2machine.go implementation
+	var err error
+	s.authority, err = authority.New(authorityPath)
+	if err != nil {
+		return err
+	}
+	s.authorityContents, err = ioutil.ReadFile(authorityPath)
+	return err
+}
 func (s *System) KeepaliveConfig() (period, timeout, rpcTimeout time.Duration) {
 	log.Print("[gce:KeepAliveConfig] Entered")
 	period = time.Minute
@@ -129,15 +153,6 @@ func (s *System) Maxprocs() int {
 // Name returns the name of this system
 func (s *System) Name() string {
 	return systemName
-}
-func (s *System) Init(b *bigmachine.B) error {
-	log.Print("[gce:Init] Entered")
-	// TODO(dazwilkin) Investigate https://godoc.org/github.com/grailbio/base/config per https://github.com/grailbio/bigmachine/issues/1
-	// TODO(dazwilkin) Assuming environmental variables (used during development) for the System configuration
-	s.Project = os.Getenv("PROJECT")
-	s.Zone = os.Getenv("ZONE")
-	s.BootstrapImage = fmt.Sprintf("%s:%s", os.Getenv("IMG"), os.Getenv("TAG"))
-	return nil
 }
 func (s *System) Read(ctx context.Context, m *bigmachine.Machine, filename string) (io.Reader, error) {
 	log.Print("[gce:Read] Entered")
