@@ -211,7 +211,7 @@ func Create(ctx context.Context, project, zone, name, image string) (*bigmachine
 
 	// TODO(dazwilkin) We lose ownership of the instance here !?
 	return &bigmachine.Machine{
-		Addr:     fmt.Sprintf("http://%s:%d", addr, port),
+		Addr:     fmt.Sprintf("https://%s:%d", addr, port),
 		Maxprocs: 1,
 		NoExec:   false,
 	}, nil
@@ -243,7 +243,7 @@ func Delete(ctx context.Context, project, zone, name string) error {
 // TODO(dazwilkin) should this return []bigmachine.Machine to match Create?
 func List(ctx context.Context, project, zone string) ([]string, error) {
 	var result []string
-	instancesList := service.Instances.List(project, zone)
+	instancesList := service.Instances.List(project, zone).MaxResults(1)
 	//.Filter("network.tags=" + networkTag) -- does not work with the API (https://issuetracker.google.com/issues/143463446)
 	//.MaxResults(1) -- debugging-only forces pages to contain a single element to test paging
 
