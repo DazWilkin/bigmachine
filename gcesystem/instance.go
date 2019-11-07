@@ -55,7 +55,22 @@ func ProjectNumber(ctx context.Context, ID string) (int64, error) {
 
 // Create creates a Compute Engine instance returning a bigmachine.Machine
 // TODO(dazwilkin) Nothing is installed on the Debian instance: should it be a Container OS? What bootstrap (container|binary)?
-func Create(ctx context.Context, project, zone, name, image string) (*bigmachine.Machine, error) {
+func Create(ctx context.Context, project, zone, name, image, authorityDir string) (*bigmachine.Machine, error) {
+	if project == "" {
+		return nil, fmt.Errorf("[Create] Requires a GCP Project ID")
+	}
+	if zone == "" {
+		return nil, fmt.Errorf("[Create] Requires a zone identifier")
+	}
+	if name == "" {
+		return nil, fmt.Errorf("[Create] Requires a (unique) machine name")
+	}
+	if image == "" {
+		return nil, fmt.Errorf("[Create] Requires a Compute Engine image name")
+	}
+	if authorityDir == "" {
+		return nil, fmt.Errorf("[Create] Requires an authority directory name")
+	}
 	log.Printf("[Create] %s: defining", name)
 	log.Printf("[Create] %s: using bootstrap image: %s", name, image)
 	manifest := &Manifest{Spec: Spec{
@@ -67,6 +82,12 @@ func Create(ctx context.Context, project, zone, name, image string) (*bigmachine
 					VolumeMount{
 						Name:      "tmpfs",
 						MountPath: "/tmp",
+						ReadOnly:  false,
+					},
+					VolumeMount{
+						Name:      "authority",
+						MountPath: "/" + authorityDir,
+						ReadOnly:  true,
 					},
 				},
 				Args: []string{"-log=debug"},
@@ -93,6 +114,12 @@ func Create(ctx context.Context, project, zone, name, image string) (*bigmachine
 				Name: "tmpfs",
 				EmptyDir: EmptyDir{
 					Medium: "Memory",
+				},
+			},
+			Volume{
+				Name: "authority",
+				HostPath: HostPath{
+					Path: "/tmp/" + authorityDir,
 				},
 			},
 		},
@@ -162,6 +189,10 @@ func Create(ctx context.Context, project, zone, name, image string) (*bigmachine
 	}
 	log.Printf("[Create] %s: being created", name)
 	operation, err := service.Instances.Insert(project, zone, instance).Context(ctx).Do()
+	if err != nil {
+		return nil, err
+	}
+
 	log.Printf("[Create] %s: tagged [HTTP|HTTPS] to be caught by default firewall rules", name)
 	log.Printf("[Create] %s: Google Cloud Logging enabled", name)
 
@@ -175,7 +206,7 @@ func Create(ctx context.Context, project, zone, name, image string) (*bigmachine
 	}
 	if operation.Status != "RUNNING" {
 		// timed-out
-		log.Printf("[Create] %s: create unsuccessful -- timed-out", name)
+		return nil, fmt.Errorf("[Create] %s: create unsuccessful -- timed-out", name)
 	}
 
 	// Wait (or timeout) for the instance to be assigned an external IP
@@ -185,7 +216,7 @@ func Create(ctx context.Context, project, zone, name, image string) (*bigmachine
 	for addr == "" && time.Since(start) < timeout {
 		instance, err = service.Instances.Get(project, zone, name).Context(ctx).Do()
 		if err != nil {
-			log.Printf("[Create] %s: failed to retrieve -- %s", name, err)
+			return nil, err
 		}
 
 		num := len(instance.NetworkInterfaces)
@@ -243,7 +274,7 @@ func Delete(ctx context.Context, project, zone, name string) error {
 // TODO(dazwilkin) should this return []bigmachine.Machine to match Create?
 func List(ctx context.Context, project, zone string) ([]string, error) {
 	var result []string
-	instancesList := service.Instances.List(project, zone).MaxResults(1)
+	instancesList := service.Instances.List(project, zone)
 	//.Filter("network.tags=" + networkTag) -- does not work with the API (https://issuetracker.google.com/issues/143463446)
 	//.MaxResults(1) -- debugging-only forces pages to contain a single element to test paging
 
