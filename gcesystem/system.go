@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -33,7 +34,12 @@ const (
 	httpTimeout = 30 * time.Second
 )
 const (
-	authorityPath = "/tmp/bigmachine.pem"
+	// Using /secrets rather than /tmp to facilitate volume-mounting the directory in the (remote) container
+	// Each node (this and its remotes) shares this directory structure
+	// During the SCP, the copy goes from /secrets to /tmp/secrets on the Container-Optimized OS
+	// But is volume-mounted into /secrets on the bigmachine container
+	authorityDir = "secrets"
+	authorityCrt = "bigmachine.pem"
 )
 
 var _ bigmachine.System = (*System)(nil)
@@ -100,11 +106,17 @@ func (s *System) Init(b *bigmachine.B) error {
 
 	// Mimicking  ec2machine.go implementation
 	var err error
-	s.authority, err = authority.New(authorityPath)
+	if _, err := os.Stat(authorityDir); os.IsNotExist(err) {
+		if err := os.Mkdir(authorityDir, 0755); err != nil {
+			return err
+		}
+	}
+	authorityFilename := filepath.Join(authorityDir, authorityCrt)
+	s.authority, err = authority.New(authorityFilename)
 	if err != nil {
 		return err
 	}
-	s.authorityContents, err = ioutil.ReadFile(authorityPath)
+	s.authorityContents, err = ioutil.ReadFile(authorityFilename)
 	return err
 }
 func (s *System) KeepaliveConfig() (period, timeout, rpcTimeout time.Duration) {
@@ -117,10 +129,10 @@ func (s *System) KeepaliveConfig() (period, timeout, rpcTimeout time.Duration) {
 func (s *System) ListenAndServe(addr string, handler http.Handler) error {
 	log.Print("[gce:ListenAndServe] Entered")
 	if addr == "" {
-		log.Printf("[gce:ListenAndServe] no address provided")
+		log.Printf("[gce:ListenAndServe] No address provided")
 		addr = fmt.Sprintf(":%d", port)
 	}
-	log.Printf("[gce:ListenAndServe] address: %s", addr)
+	log.Printf("[gce:ListenAndServe] Address: %s", addr)
 	_, config, err := s.authority.HTTPSConfig()
 	if err != nil {
 		return err
@@ -217,7 +229,7 @@ func (s *System) Start(ctx context.Context, count int) ([]*bigmachine.Machine, e
 		name := fmt.Sprintf("%s-%02d", prefix, i)
 		go func(name string) {
 			defer wg.Done()
-			machine, err := Create(ctx, s.Project, s.Zone, name, s.BootstrapImage)
+			machine, err := Create(ctx, s.Project, s.Zone, name, s.BootstrapImage, authorityDir)
 			ch <- Result{
 				machine: machine,
 				err:     err,
@@ -240,13 +252,28 @@ func (s *System) Start(ctx context.Context, count int) ([]*bigmachine.Machine, e
 			log.Printf("[gce:Start:go] %+v", i.err)
 			failures = failures + 1
 		}
-		log.Print("[gce:Start] Adding bigmachine")
+		// TODO(dazwilkin) Should only proceed here if there's no error?
+		log.Printf("[gce:Start] Adding bigmachine (%s)", i.machine.Addr)
 		machines = append(machines, i.machine)
 	}
 	log.Print("[gce:Start] Done w/ channel")
 	if failures > 0 {
 		err = fmt.Errorf("[gcs:Start] %d/%d machines were not created", failures, count)
 	}
+
+	// Now the machines are started, copy the authority (certificate) onto them
+	for _, machine := range machines {
+		// TODO(dazwilkin) slightly cumbersome: we must parse the address to extract the IP
+		u, err := url.Parse(machine.Addr)
+		if err != nil {
+			return nil, err
+		}
+		log.Printf("[gce:Start] Copying authority to %s:%s/%s", u.Hostname(), authorityDir, authorityCrt)
+		if err := s.scp(ctx, u.Hostname(), authorityDir, authorityCrt, s.authorityContents); err != nil {
+			log.Printf("[gce:Start] runSCP: %+v", err)
+		}
+	}
+
 	log.Print("[gce:Start] Completed")
 	return machines, err
 }
@@ -273,6 +300,7 @@ func (s *System) Tail(ctx context.Context, m *bigmachine.Machine) (io.Reader, er
 	return s.run(ctx, u.Hostname(), "docker container ls --filter=name=gceboot --format=\"{{.ID}}\" | xargs docker container logs --follow"), nil
 }
 func (s *System) run(ctx context.Context, addr, command string) io.Reader {
+	log.Print("[gce:run] Entered")
 	r, w := io.Pipe()
 	go func() {
 		var err error
@@ -298,11 +326,13 @@ func (s *System) run(ctx context.Context, addr, command string) io.Reader {
 	return r
 }
 func (s *System) runSSH(addr string, w io.Writer, command string) error {
+	log.Print("[gce:runSSH] Entered")
 	conn, err := s.dialSSH(addr)
 	if err != nil {
 		return err
 	}
 	defer conn.Close()
+
 	sess, err := conn.NewSession()
 	if err != nil {
 		return err
@@ -311,6 +341,57 @@ func (s *System) runSSH(addr string, w io.Writer, command string) error {
 	sess.Stdout = w
 	sess.Stderr = w
 	return sess.Run(command)
+}
+func (s *System) scp(ctx context.Context, addr, path, file string, content []byte) (err error) {
+	for retries := 0; ; retries++ {
+		err = s.runSCP(addr, path, file, content)
+		if err == nil {
+			// Done
+			break
+		}
+		if strings.HasPrefix(err.Error(), "ssh: unable to authenticate") {
+			break
+		}
+		if _, ok := err.(*ssh.ExitError); ok {
+			break
+		}
+		var sshRetryPolicy = retry.Backoff(time.Second, 10*time.Second, 1.5)
+		if err = retry.Wait(ctx, sshRetryPolicy, retries); err != nil {
+			break
+		}
+	}
+	return err
+}
+func (s *System) runSCP(addr, dir, name string, content []byte) error {
+	log.Print("[gce:runSCP] Entered")
+	conn, err := s.dialSSH(addr)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	sess, err := conn.NewSession()
+	if err != nil {
+		return err
+	}
+	defer sess.Close()
+
+	// See https://gist.github.com/jedy/3357393
+	go func() {
+		w, err := sess.StdinPipe()
+		if err != nil {
+			log.Print(err)
+		}
+		defer w.Close()
+		// This creates dir/name
+		fmt.Fprintln(w, "D0755", 0, dir)
+		fmt.Fprintln(w, "C0644", len(content), name)
+		w.Write(content)
+		fmt.Fprint(w, "\x00")
+	}()
+	// And this puts dir/name under /tmp --> /tmp/dir/name
+	// This path is then referenced by the container's volume mount as /tmp/dir/name --> /dir/name
+	return sess.Run("/usr/bin/scp -tr /tmp")
 }
 func (s *System) dialSSH(addr string) (*ssh.Client, error) {
 	// TOOD(dazwilkin) Determine gCloud current user correctly
