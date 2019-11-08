@@ -54,7 +54,6 @@ func ProjectNumber(ctx context.Context, ID string) (int64, error) {
 }
 
 // Create creates a Compute Engine instance returning a bigmachine.Machine
-// TODO(dazwilkin) Nothing is installed on the Debian instance: should it be a Container OS? What bootstrap (container|binary)?
 func Create(ctx context.Context, project, zone, name, image, authorityDir string) (*bigmachine.Machine, error) {
 	if project == "" {
 		return nil, fmt.Errorf("[Create] Requires a GCP Project ID")
@@ -78,6 +77,10 @@ func Create(ctx context.Context, project, zone, name, image, authorityDir string
 			Container{
 				Name:  "gceboot",
 				Image: image,
+				// Required to run containers on privileged ports (<1024)
+				SecurityContext: SecurityContext{
+					Privileged: true,
+				},
 				VolumeMounts: []VolumeMount{
 					VolumeMount{
 						Name:      "tmpfs",
@@ -103,7 +106,6 @@ func Create(ctx context.Context, project, zone, name, image, authorityDir string
 					Env{
 						Name: "BIGMACHINE_ADDR",
 						// TODO(dazwilkin) Dislike that this is a global variable in gcesystem namespace
-						// TODO(dazwilkin) Should this be ":" or "0.0.0.0:"?
 						Value: fmt.Sprintf("0.0.0.0:%d", port),
 					},
 				},
@@ -162,7 +164,9 @@ func Create(ctx context.Context, project, zone, name, image, authorityDir string
 				},
 			},
 		},
-		// TODO(dazwilkin) the Tag 'bigmachine' will be utilized by the Delete call to identify which instances are to be deleted
+		// The Tag 'bigmachine' will be utilized by:
+		// - the Delete call to identify which instances are to be deleted
+		// - a potential firewall rule to permit traffic to this instance's port(s)
 		Tags: &compute.Tags{
 			Items: []string{
 				networkTag,
@@ -239,8 +243,6 @@ func Create(ctx context.Context, project, zone, name, image, authorityDir string
 	}
 
 	log.Printf("[Create] %s: created (%s)", name, addr)
-
-	// TODO(dazwilkin) We lose ownership of the instance here !?
 	return &bigmachine.Machine{
 		Addr:     fmt.Sprintf("https://%s:%d", addr, port),
 		Maxprocs: 1,
