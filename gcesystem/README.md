@@ -160,6 +160,50 @@ Oct 08 20:17:41 instance-1 systemd[1]: konlet-startup.service: Consumed 114ms CP
 }
 ```
 
+## Useful
+
+```bash
+PROJECT=
+ZONE=
+```
+
+Delete "bigmachine" (!) tagged instances:
+```bash
+INSTANCES=$(\
+  gcloud compute instances list \
+  --filter="tags.items=bigmachine" \
+  --format="value(name)" \
+  --project=${PROJECT})
+for INSTANCE in ${INSTANCES}
+do
+  echo ${INSTANCE}
+  gcloud compute instances delete ${INSTANCE} \
+  --zone=${ZONE} \
+  --project=${PROJECT} \
+  --quiet &
+done
+```
+
+Confirm that the certificate has been copied to "bigmachine" tagged remote instances:
+```bash
+IPS=$(\
+  gcloud compute instances list \
+  --filter="tags.items=bigmachine" \
+  --format="value(networkInterfaces[0].accessConfigs[0].natIP)")
+  --project=${PROJECT})
+for IP in ${IPS}
+do
+  echo ${IP}
+  ssh-keygen -R ${IP} && \
+  ssh \
+  -oStrictHostKeyChecking=no \
+  -i ~/.ssh/google_compute_engine \
+  dazwilkin@${IP} \
+  'cat /tmp/secrets/bigmachine.pem'
+done
+```
+
+
 ## References
 
 + Google Compute Engine [example](https://github.com/googleapis/google-api-go-client/blob/master/examples/compute.go)
