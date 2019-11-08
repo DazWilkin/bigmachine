@@ -164,14 +164,16 @@ Oct 08 20:17:41 instance-1 systemd[1]: konlet-startup.service: Consumed 114ms CP
 
 ## Privileged
 
-Working on getting the system to work with port `:443` (privileged), it doesn't currently
+It with port `:443` (privileged):
 
++ Uses the HTTPS predefined firewall rule if tagged `https`
 + Dockerfile `#USER 999`
 + System `port=443`
 + Instance `SecurityContext: Privileged: true`
 
 It works with port `:8443` (non-privileged)
 
++ Requires a user-defined firewall to permit traffic on the port
 + Dockerfile `USER 999`
 + System `port=8443`
 + Instance `SecurityContext: Privileged: false` (or omitted|default)
