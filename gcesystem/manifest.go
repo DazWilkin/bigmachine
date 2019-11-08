@@ -17,14 +17,18 @@ type Spec struct {
 	Volumes    []Volume    `yaml:"volumes,omitempty"`
 }
 type Container struct {
-	Name          string        `yaml:"name"`
-	Image         string        `yaml:"image"`
-	Stdin         bool          `yaml:"stdin,omitempty"`
-	TTY           bool          `yaml:"tty,omitempty"`
-	RestartPolicy string        `yaml:"restartPolicy,omitempty"`
-	Args          []string      `yaml:"args,omitempty"`
-	Env           []Env         `yaml:"env,omitempty"`
-	VolumeMounts  []VolumeMount `yaml:"volumeMounts,omitempty"`
+	Name            string          `yaml:"name"`
+	Image           string          `yaml:"image"`
+	SecurityContext SecurityContext `yaml:"securityContext,omitempty"`
+	Stdin           bool            `yaml:"stdin,omitempty"`
+	TTY             bool            `yaml:"tty,omitempty"`
+	RestartPolicy   string          `yaml:"restartPolicy,omitempty"`
+	Args            []string        `yaml:"args,omitempty"`
+	Env             []Env           `yaml:"env,omitempty"`
+	VolumeMounts    []VolumeMount   `yaml:"volumeMounts,omitempty"`
+}
+type SecurityContext struct {
+	Privileged bool `yaml:"privileged"`
 }
 type Env struct {
 	Name  string `yaml:"name"`
@@ -33,13 +37,19 @@ type Env struct {
 type VolumeMount struct {
 	Name      string `yaml:"name"`
 	MountPath string `yaml:"mountPath"`
+	ReadOnly  bool   `yaml:"readOnly"`
 }
 type Volume struct {
-	Name     string   `yaml:"name"`
-	EmptyDir EmptyDir `yaml:"emptyDir"`
+	Name string `yaml:"name"`
+	// TODO(dazwilkin) This is not ideal Volume contains [EmtpyDir|HostPath]; to make life easier, assuming only one will be provided
+	EmptyDir EmptyDir `yaml:"emptyDir,omitempty"`
+	HostPath HostPath `yaml:"hostPath,omitempty"`
 }
 type EmptyDir struct {
 	Medium string `yaml:"medium"`
+}
+type HostPath struct {
+	Path string `yaml:"path"`
 }
 
 func (m *Manifest) String() (string, error) {
