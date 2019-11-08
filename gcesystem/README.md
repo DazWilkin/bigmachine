@@ -19,7 +19,7 @@ gcloud service enable cloudresourcemanager.googleapis.com --project=${PROJECT}
 
 ## Docker
 
-Whenever changes are made to gcesystem, the image needs to be rebuilt so that the instances are deployed with the current (!) container
+Whenever changes are made to `gcesystem`, the image needs to be rebuilt so that the instances are deployed with the current (!) container
 
 I'm having to:
 ```bash
@@ -42,6 +42,8 @@ sed --in-place=.bak "s|\"TAG\": \"[0-9a-f]\{40\}\"|\"TAG\": \"${TAG}\"|g" ./.vsc
 **NB** The repetition must be escpaed too `\{40\}`
 
 **NB** We'll reuse `${IMG}` and `${TAG}` in the next section
+
+**NB** The Dockerfile contains `USER 999` this prohibits (!) the container running privileged (e.g. `:443`) ports
 
 ## Run
 
@@ -159,6 +161,20 @@ Oct 08 20:17:41 instance-1 systemd[1]: konlet-startup.service: Consumed 114ms CP
     ]
 }
 ```
+
+## Privileged
+
+Working on getting the system to work with port `:443` (privileged), it doesn't currently
+
++ Dockerfile `#USER 999`
++ System `port=443`
++ Instance `SecurityContext: Privileged: true`
+
+It works with port `:8443` (non-privileged)
+
++ Dockerfile `USER 999`
++ System `port=8443`
++ Instance `SecurityContext: Privileged: false` (or omitted|default)
 
 ## Useful
 
