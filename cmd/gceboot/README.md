@@ -17,3 +17,5 @@ docker push ${REPO}:${TAG}
 ```
 
 Ensure the environment variable `TAG` is set when running e.g. `cmd/bigpi/bigpi.go` or debugging (`launch.json`) too
+
+**NB** If the Dockerfile `USER 999` is included, the container is unable to run privileged ports e.g. 443
