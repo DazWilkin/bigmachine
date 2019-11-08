@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -130,9 +131,22 @@ func (s *System) ListenAndServe(addr string, handler http.Handler) error {
 	log.Print("[gce:ListenAndServe] Entered")
 	if addr == "" {
 		log.Printf("[gce:ListenAndServe] No address provided")
+		// TODO(dazwilkin) should this be ":" or "0.0.0.0:"?
 		addr = fmt.Sprintf(":%d", port)
 	}
 	log.Printf("[gce:ListenAndServe] Address: %s", addr)
+	// TODO(dazwilkin) is this the first time that we could determine the port?
+	_, p, err := net.SplitHostPort(addr)
+	if err != nil {
+		return err
+	}
+	i, err := strconv.Atoi(p)
+	if err != nil {
+		return err
+	}
+	if i < 1024 {
+		log.Printf("[gce:ListenAndServe] Serving on a privileged port (%d) -- if this fails, check firewalls, Dockerfile(USER) etc.", i)
+	}
 	_, config, err := s.authority.HTTPSConfig()
 	if err != nil {
 		return err
@@ -344,6 +358,8 @@ func (s *System) runSSH(addr string, w io.Writer, command string) error {
 	sess.Stderr = w
 	return sess.Run(command)
 }
+
+// TODO(dazwilkn) too similar to 'run' to not be refactored
 func (s *System) scp(ctx context.Context, addr, path, file string, content []byte) (err error) {
 	for retries := 0; ; retries++ {
 		err = s.runSCP(addr, path, file, content)
@@ -364,6 +380,8 @@ func (s *System) scp(ctx context.Context, addr, path, file string, content []byt
 	}
 	return err
 }
+
+// TODO(dazwilkn) too similar to 'runSSH' to not be refactored
 func (s *System) runSCP(addr, dir, name string, content []byte) error {
 	log.Print("[gce:runSCP] Entered")
 	conn, err := s.dialSSH(addr)
