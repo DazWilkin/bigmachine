@@ -25,7 +25,6 @@ import (
 )
 
 var (
-	// TODO(dazwilkin) Restructure flags to permit arbitrary (!?) backends
 	systemFlag   = flag.String("bigm.system", "local", "system on which to run the bigmachine")
 	instanceType = flag.String("bigm.ec2type", "m3.medium", "instance type with which to launch a bigmachine EC2 cluster")
 	ondemand     = flag.Bool("bigm.ec2ondemand", false, "use ec2 on-demand instances instead of spot")
