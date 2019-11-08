@@ -25,8 +25,9 @@ import (
 )
 
 const (
+	// TODO(dazwilkin) generalize this to find this user's private key
 	key        = "/home/dazwilkin/.ssh/google_compute_engine"
-	port       = 8443
+	port       = 443
 	prefix     = "bigmachine"
 	systemName = "gce"
 )
@@ -73,7 +74,6 @@ func (s *System) Exit(code int) {
 	os.Exit(code)
 }
 func (s *System) HTTPClient() *http.Client {
-	// TODO(dazwilkin) not yet implement
 	log.Print("[gce:HTTPClient] Entered")
 	err := s.clientOnce.Do(func() (err error) {
 		s.clientConfig, _, err = s.authority.HTTPSConfig()
@@ -251,19 +251,24 @@ func (s *System) Start(ctx context.Context, count int) ([]*bigmachine.Machine, e
 		if i.err != nil {
 			log.Printf("[gce:Start:go] %+v", i.err)
 			failures = failures + 1
+		} else {
+			log.Printf("[gce:Start] Adding bigmachine (%s)", i.machine.Addr)
+			machines = append(machines, i.machine)
 		}
-		// TODO(dazwilkin) Should only proceed here if there's no error?
-		log.Printf("[gce:Start] Adding bigmachine (%s)", i.machine.Addr)
-		machines = append(machines, i.machine)
 	}
 	log.Print("[gce:Start] Done w/ channel")
+	if failures == uint(count) {
+		// Failed to create any machines; unrecoverable
+		return nil, fmt.Errorf("[gce:Start] Failed to create any machines")
+	}
 	if failures > 0 {
-		err = fmt.Errorf("[gcs:Start] %d/%d machines were not created", failures, count)
+		// Failed to create some machines; recoverable
+		err = fmt.Errorf("[gce:Start] %d/%d machines were not created", failures, count)
 	}
 
 	// Now the machines are started, copy the authority (certificate) onto them
 	for _, machine := range machines {
-		// TODO(dazwilkin) slightly cumbersome: we must parse the address to extract the IP
+		// Cumbersome: we must parse the address to extract the IP but this is how 'run' does it too
 		u, err := url.Parse(machine.Addr)
 		if err != nil {
 			return nil, err
@@ -289,9 +294,6 @@ func (s *System) Tail(ctx context.Context, m *bigmachine.Machine) (io.Reader, er
 	// logName="projects/${PROJECT}/logs/cos_containers"
 	// resource.labels.instance_id="${INSTANCE_ID}"
 	// Unfortunately, this requires the ${INSTANCE_ID} which is not easily obtained from the bigmachine.Machine
-
-	// Original approach
-	// return s.run(ctx, u.Hostname(), "sudo journalctl --output=cat --follow"), nil
 
 	// Unfortunately Container-Optimized OS does not (correctly) name containers
 	// When created, the container is Named "gceboot" (see manifest Container.Name in instance.go) but this is not reflected at runtime
