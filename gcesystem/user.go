@@ -22,5 +22,5 @@ func HomeDir() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return u.HostDir, nil
+	return u.HomeDir, nil
 }
