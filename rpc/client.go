@@ -170,7 +170,10 @@ func (c *Client) Call(ctx context.Context, addr, serviceMethod string, arg, repl
 		b := new(bytes.Buffer)
 		enc := gob.NewEncoder(b)
 		if err := enc.Encode(arg); err != nil {
-			return errors.E(errors.Invalid, err)
+			// Because we are writing into a Buffer, any error we see is a
+			// failure to encode, which will not succeed on retry without
+			// intervention.
+			return errors.E(errors.Fatal, errors.Invalid, err)
 		}
 		requestBytes = b.Len()
 		if requestBytes > largeRpcPayload {
@@ -210,7 +213,7 @@ func (c *Client) Call(ctx context.Context, addr, serviceMethod string, arg, repl
 			// Nothing to do if closing fails.
 			_ = resp.Body.Close()
 			c.resetClient(h, serviceMethod, fmt.Sprintf("%s: client error %s, %v, %v", url, resp.Status, string(body), err))
-			return errors.E(errors.Invalid, fmt.Sprintf("%s: client error %s", url, resp.Status))
+			return errors.E(errors.Fatal, errors.Invalid, fmt.Sprintf("%s: client error %s", url, resp.Status))
 		default:
 			body, err := ioutil.ReadAll(resp.Body)
 			// Nothing to do if closing fails.
@@ -240,7 +243,7 @@ func (c *Client) Call(ctx context.Context, addr, serviceMethod string, arg, repl
 		case 400 <= resp.StatusCode && resp.StatusCode < 500:
 			body, err := ioutil.ReadAll(resp.Body)
 			c.resetClient(h, serviceMethod, fmt.Sprintf("%s: client error %s, %v, %v", url, resp.Status, string(body), err))
-			return errors.E(errors.Invalid, fmt.Sprintf("%s: client error %s", url, resp.Status))
+			return errors.E(errors.Fatal, errors.Invalid, fmt.Sprintf("%s: client error %s", url, resp.Status))
 		default:
 			body, err := ioutil.ReadAll(resp.Body)
 			c.resetClient(h, serviceMethod, fmt.Sprintf("%s: bad reply status %s, %v, %v", url, resp.Status, string(body), err))
@@ -274,18 +277,13 @@ func truncatef(v interface{}) string {
 	return b.String()
 }
 
-// decodeErrors decodes a serialized error from the codec stream dec.
-// It translates any error with kind error.Net into errors.Other, as
-// we should not propagate network errors across network boundaries
-// as these are prone to misinterpretation.
+// decodeErrors decodes a serialized error from the codec stream dec. It wraps
+// errors with an errors.Remote so that callers can distinguish between errors
+// in the machinery to execute the RPC and errors returned by the RPC itself.
 func decodeError(serviceMethod string, dec *gob.Decoder) error {
 	e := new(errors.Error)
 	if err := dec.Decode(e); err != nil {
 		return errors.E(errors.Invalid, errors.Temporary, "error while decoding error for "+serviceMethod, err)
 	}
-	if e.Kind == errors.Net {
-		e.Kind = errors.Other
-		e.Severity = errors.Unknown
-	}
-	return e
+	return errors.E(errors.Remote, e)
 }

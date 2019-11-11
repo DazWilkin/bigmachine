@@ -93,6 +93,13 @@ var (
 
 var immortal = flag.Bool("ec2machineimmortal", false, "make immortal EC2 instances (debugging only)")
 
+// SetMortality conrols the mortality of EC2 instances for help with debugging
+// low level boot time issues. It is equivalent to the 'ec2machineimmportal' flag
+// for configurations where flags cannot be used.
+func SetMortality(v bool) {
+	*immortal = v
+}
+
 var (
 	// InstanceTypes stores metadata for each known EC2 instance type.
 	// TODO(marius): generate this from the the EC2 inventory JSON instead.
@@ -154,6 +161,13 @@ type System struct {
 	// SecurityGroup is the security group into which instances are launched.
 	SecurityGroup string
 
+	// SecurityGroups are the security group into which instances are launched.
+	// If set, it used in preference to SecurityGroup above.
+	SecurityGroups []string
+
+	// Subnet is the subnet into which instances are launched.
+	Subnet string
+
 	// Diskspace is the amount of disk space in GiB allocated
 	// to the instance's root EBS volume. Its default is 200.
 	Diskspace uint
@@ -168,7 +182,7 @@ type System struct {
 	// contains the ec2machine implementation and runs bigmachine's
 	// supervisor service. By default the following binary is used:
 	//
-	//	http://grail-public-bin.s3-us-west-2.amazonaws.com/linux/amd64/ec2boot0.3
+	//	https://grail-public-bin.s3-us-west-2.amazonaws.com/linux/amd64/ec2boot0.3
 	//
 	// The binary is fetched by a vanilla curl(1) invocation, and thus needs
 	// to be publicly available.
@@ -180,6 +194,11 @@ type System struct {
 	// keys available in the SSH agent reachable by $SSH_AUTH_SOCK, if
 	// one exists.
 	SshKeys []string
+
+	// The EC2 key pair name to associate with the created instances when
+	// the instance this launched. This key name will appear in the EC2
+	// instance's metadata.
+	EC2KeyName string
 
 	// The user running the application. For tagging.
 	Username string
@@ -226,7 +245,7 @@ func (s *System) Init(b *bigmachine.B) error {
 		// TODO(marius): don't hardcode this as being linux/amd64
 		rc, err := self.Open("linux", "amd64")
 		if err == fatbin.ErrNoSuchImage {
-			return errors.E(errors.Precondition, "binary has no linux/amd64 image; consider compiling with fatgo or run on linux/amd64")
+			return errors.E(errors.Precondition, "binary has no linux/amd64 image; consider compiling with gofat or run on linux/amd64")
 		} else if err != nil {
 			return err
 		}
@@ -245,17 +264,11 @@ func (s *System) Init(b *bigmachine.B) error {
 	if s.AWSConfig.Region == nil {
 		s.AWSConfig.Region = aws.String("us-west-2")
 	}
-	if s.InstanceProfile == "" {
-		s.InstanceProfile = "arn:aws:iam::619867110810:instance-profile/bigmachine"
-	}
-	if s.SecurityGroup == "" {
-		s.SecurityGroup = "sg-7390e50c"
-	}
 	if s.Diskspace == 0 {
 		s.Diskspace = 200
 	}
 	if s.Binary == "" {
-		s.Binary = "http://grail-public-bin.s3-us-west-2.amazonaws.com/linux/amd64/ec2boot0.3"
+		s.Binary = "https://grail-public-bin.s3-us-west-2.amazonaws.com/linux/amd64/ec2boot0.3"
 	}
 	var ok bool
 	s.config, ok = instanceTypes[s.InstanceType]
@@ -303,6 +316,9 @@ func (s *System) Init(b *bigmachine.B) error {
 		return err
 	}
 	s.authorityContents, err = ioutil.ReadFile(authorityPath)
+	if err != nil {
+		return err
+	}
 	return err
 }
 
@@ -394,9 +410,23 @@ func (s *System) Start(ctx context.Context, count int) ([]*bigmachine.Machine, e
 		})
 	}
 	var run func() ([]string, error)
+	securityGroups := []*string{aws.String(s.SecurityGroup)}
+	if len(s.SecurityGroups) > 0 {
+		securityGroups = make([]*string, len(s.SecurityGroups))
+		for i := range s.SecurityGroups {
+			securityGroups[i] = aws.String(s.SecurityGroups[i])
+		}
+	}
+
+	var ec2KeyName *string
+	if len(s.EC2KeyName) > 0 {
+		ec2KeyName = aws.String(s.EC2KeyName)
+	}
+
 	if s.OnDemand {
 		run = func() ([]string, error) {
 			resv, err := s.ec2.RunInstances(&ec2.RunInstancesInput{
+				SubnetId:              aws.String(s.Subnet),
 				ImageId:               aws.String(s.AMI),
 				MaxCount:              aws.Int64(int64(count)),
 				MinCount:              aws.Int64(int64(1)),
@@ -413,7 +443,8 @@ func (s *System) Start(ctx context.Context, count int) ([]*bigmachine.Machine, e
 					Enabled: aws.Bool(true), // Required
 				},
 				UserData:         aws.String(base64.StdEncoding.EncodeToString(userData)),
-				SecurityGroupIds: []*string{aws.String(s.SecurityGroup)},
+				SecurityGroupIds: securityGroups,
+				KeyName:          ec2KeyName,
 			})
 			if err != nil {
 				return nil, err
@@ -436,6 +467,7 @@ func (s *System) Start(ctx context.Context, count int) ([]*bigmachine.Machine, e
 				SpotPrice:     aws.String(fmt.Sprintf("%.3f", s.config.Price[*s.AWSConfig.Region])),
 				InstanceCount: aws.Int64(int64(count)),
 				LaunchSpecification: &ec2.RequestSpotLaunchSpecification{
+					SubnetId:            aws.String(s.Subnet),
 					ImageId:             aws.String(s.AMI),
 					EbsOptimized:        aws.Bool(s.config.EBSOptimized),
 					InstanceType:        aws.String(s.config.Name),
@@ -444,7 +476,8 @@ func (s *System) Start(ctx context.Context, count int) ([]*bigmachine.Machine, e
 					IamInstanceProfile: &ec2.IamInstanceProfileSpecification{
 						Arn: aws.String(s.InstanceProfile),
 					},
-					SecurityGroupIds: []*string{aws.String(s.SecurityGroup)},
+					SecurityGroupIds: securityGroups,
+					KeyName:          ec2KeyName,
 				},
 			})
 			if err != nil {
@@ -563,14 +596,30 @@ func (s *System) Start(ctx context.Context, count int) ([]*bigmachine.Machine, e
 	}
 	machines := make([]*bigmachine.Machine, len(instanceIds))
 	for i, instance := range describeInstance.Reservations[0].Instances {
-		if instance.PublicDnsName == nil || *instance.PublicDnsName == "" {
-			return nil, fmt.Errorf("ec2.DescribeInstances %s[%d]: no public DNS name", aws.StringValue(instance.InstanceId), i)
+		addr := getAddress(instance)
+		if len(addr) == 0 {
+			return nil, fmt.Errorf("ec2.DescribeInstances %s[%d]: no dns name or ip addresss available", aws.StringValue(instance.InstanceId), i)
 		}
 		machines[i] = new(bigmachine.Machine)
-		machines[i].Addr = fmt.Sprintf("https://%s/", *instance.PublicDnsName)
+		machines[i].Addr = fmt.Sprintf("https://%s/", addr)
 		machines[i].Maxprocs = int(s.config.VCPU)
 	}
 	return machines, nil
+}
+
+func getAddress(instance *ec2.Instance) string {
+	for _, ptr := range []*string{
+		instance.PublicDnsName,
+		instance.PublicIpAddress,
+		instance.PrivateIpAddress,
+		// NOTE: do not return a private DNS name since in it is not guaranteed to
+		//       be resolvable externally.
+	} {
+		if val := aws.StringValue(ptr); len(val) > 0 {
+			return val
+		}
+	}
+	return ""
 }
 
 func (s *System) sliceConfig() (nslice int, sliceSize int64) {
