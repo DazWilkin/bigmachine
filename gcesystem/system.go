@@ -66,7 +66,7 @@ func key() string {
 	if err != nil {
 		log.Fatal("unable to determine current user's home directory")
 	}
-	return fmt.Sprintf("%s/.ssh/google_compute_engine", u)
+	return fmt.Sprintf("%s/.ssh/google_compute_engine", h)
 }
 
 type System struct {
