@@ -26,8 +26,6 @@ import (
 )
 
 const (
-	// TODO(dazwilkin) generalize this to find this user's private key
-	key        = "/home/dazwilkin/.ssh/google_compute_engine"
 	port       = 443
 	prefix     = "bigmachine"
 	systemName = "gce"
@@ -44,8 +42,10 @@ const (
 	authorityCrt = "bigmachine.pem"
 )
 
-var _ bigmachine.System = (*System)(nil)
-
+var (
+	// Ensure that Systems implements bigmachine.System interface
+	_ bigmachine.System = (*System)(nil)
+)
 var (
 	// Instance is a default gcemachine System
 	Instance = new(System)
@@ -58,6 +58,15 @@ func init() {
 		log.Print("Compute Engine backend uses Application Default Credentials. GOOGLE_APPLICATION_CREDENTIALS environment variable is unset")
 	}
 	bigmachine.RegisterSystem(systemName, new(System))
+}
+
+// On Compute Engine, the current user's ~/.ssh/google_compute_engine contains the private key for SSH
+func key() string {
+	h, err := HomeDir()
+	if err != nil {
+		log.Fatal("unable to determine current user's home directory")
+	}
+	return fmt.Sprintf("%s/.ssh/google_compute_engine", u)
 }
 
 type System struct {
@@ -414,10 +423,14 @@ func (s *System) runSCP(addr, dir, name string, content []byte) error {
 	return sess.Run("/usr/bin/scp -tr /tmp")
 }
 func (s *System) dialSSH(addr string) (*ssh.Client, error) {
-	// TOOD(dazwilkin) Determine gCloud current user correctly
-	log.Print("[system:dialSSH] warning -- defaults to 'dazwilkin' user")
+	log.Print("[system:dialSSH] Entered")
+	user, err := Username()
+	if err != nil {
+		log.Fatal("unable to determine current user's username")
+	}
+	log.Printf("[system:ssh] user: %s", user)
 	config := &ssh.ClientConfig{
-		User: "dazwilkin",
+		User: user,
 		Auth: []ssh.AuthMethod{
 			s.publicKey(),
 		},
@@ -429,13 +442,13 @@ func (s *System) dialSSH(addr string) (*ssh.Client, error) {
 	return ssh.Dial("tcp", addr+":22", config)
 }
 func (s *System) publicKey() ssh.AuthMethod {
-	buffer, err := ioutil.ReadFile(key)
+	b, err := ioutil.ReadFile(key())
 	if err != nil {
 		log.Fatal(err)
 	}
-	key, err := ssh.ParsePrivateKey(buffer)
+	k, err := ssh.ParsePrivateKey(b)
 	if err != nil {
 		log.Fatal(err)
 	}
-	return ssh.PublicKeys(key)
+	return ssh.PublicKeys(k)
 }
