@@ -105,8 +105,14 @@ func (s *System) HTTPClient() *http.Client {
 }
 func (s *System) Init(b *bigmachine.B) error {
 	log.Print("[gce:Init] Entered")
+	if onGCE() {
+		log.Print("[gce:Init] Running on GCE")
+	} else {
+		log.Print("[gce:Init] Running off GCE")
+	}
 	// TODO(dazwilkin) Investigate https://godoc.org/github.com/grailbio/base/config per https://github.com/grailbio/bigmachine/issues/1
 	// TODO(dazwilkin) Assuming environmental variables (used during development) for the System configuration
+	// TODO(dazwilkin) instance.go repopulates these value from the host into the remote nodes
 	log.Printf("[gce:Init] Getenv(PROJECT)=%s", os.Getenv("PROJECT"))
 	s.Project = os.Getenv("PROJECT")
 	log.Printf("[gce:Init] Getenv(ZONE)=%s", os.Getenv("ZONE"))
