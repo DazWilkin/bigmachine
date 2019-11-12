@@ -8,7 +8,6 @@ import (
 
 	"github.com/grailbio/bigmachine"
 
-	cloudresourcemanager "google.golang.org/api/cloudresourcemanager/v1"
 	compute "google.golang.org/api/compute/v1"
 )
 
@@ -37,20 +36,6 @@ var service *compute.Service
 func NewClient(ctx context.Context) (err error) {
 	service, err = compute.NewService(ctx)
 	return
-}
-
-// ProjectNumber returns a project number for a given project
-func ProjectNumber(ctx context.Context, ID string) (int64, error) {
-	service, err := cloudresourcemanager.NewService(ctx)
-	if err != nil {
-		return 0, err
-	}
-	p, err := service.Projects.Get(ID).Context(ctx).Do()
-	if err != nil {
-		return 0, err
-	}
-	log.Printf("[ProjectNumber] %s-->%d", ID, p.ProjectNumber)
-	return p.ProjectNumber, nil
 }
 
 // Create creates a Compute Engine instance returning a bigmachine.Machine
@@ -95,6 +80,18 @@ func Create(ctx context.Context, project, zone, name, image, authorityDir string
 				},
 				Args: []string{"-log=debug"},
 				Env: []Env{
+					// GCP related
+					// These could (should?) be obtained from the metadata service
+					// GOOGLE_APPLICATION_CREDENTIALS is not set here because it will be obtained automatically from the metadata service
+					Env{
+						Name:  "PROJECT",
+						Value: project,
+					},
+					Env{
+						Name:  "ZONE",
+						Value: zone,
+					},
+					// BigMachine related
 					Env{
 						Name:  "BIGMACHINE_MODE",
 						Value: "machine",
