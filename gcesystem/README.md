@@ -1,6 +1,22 @@
 # Google Compute Engine backend
 
-## API Client Library
+## Issues | Feature Requests
+
++ Currently limited to `f1-micro` (because these are ~free); should refactor to permit user-defined machine type
++ Tail does not (appear to) provide a retry mechanism; the BigMachine container is not immediately after after the instance becomes available; this would be better to retry|backoff
++ Tail is used to pipe the instance's logs back to the root node but this is a non-ideal assumption; with GCP, the COS instance's logs would be better read by the Cloud Logging service
++ I suspect that the issue with `FROM: scratch` is that the binaries shipped to the nodes may have additional dependencies not surfaced until runtime
+
+## Compute Eninge
+
+Needs to be enabled (but should be enabled by default):
+```bash
+gcloud services enable compute.googleapis.com --project=${PROJECT}
+```
+
+**NB** The user running BigMachine must have `gcloud compute ssh ...` for `${whoami}` and `${PROJECT}` in order that there exists in the current user's home directory `~/.ssh/google_compute_engine` private key
+
+### API Client Library
 
 Uses Google's API Client Library for Compute v1; there is no Golang Cloud Client Library for Compute :-(
 
