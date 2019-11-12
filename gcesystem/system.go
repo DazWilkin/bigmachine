@@ -23,6 +23,7 @@ import (
 	"github.com/grailbio/bigmachine/internal/authority"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/net/http2"
+	"golang.org/x/sync/errgroup"
 )
 
 const (
@@ -296,16 +297,25 @@ func (s *System) Start(ctx context.Context, count int) ([]*bigmachine.Machine, e
 	}
 
 	// Now the machines are started, copy the authority (certificate) onto them
+	var g errgroup.Group
 	for _, machine := range machines {
-		// Cumbersome: we must parse the address to extract the IP but this is how 'run' does it too
-		u, err := url.Parse(machine.Addr)
-		if err != nil {
-			return nil, err
-		}
-		log.Printf("[gce:Start] Copying authority to %s:%s/%s", u.Hostname(), authorityDir, authorityCrt)
-		if err := s.scp(ctx, u.Hostname(), authorityDir, authorityCrt, s.authorityContents); err != nil {
-			log.Printf("[gce:Start] runSCP: %+v", err)
-		}
+		// Avoid closing over the intial value (https://golang.org/doc/faq#closures_and_goroutines)
+		machine := machine
+		g.Go(func() error {
+			// Cumbersome: we must parse the address to extract the IP but this is how 'run' does it too
+			u, err := url.Parse(machine.Addr)
+			if err != nil {
+				return err
+			}
+			log.Printf("[gce:Start] Copying authority to %s:%s/%s", u.Hostname(), authorityDir, authorityCrt)
+			if err := s.scp(ctx, u.Hostname(), authorityDir, authorityCrt, s.authorityContents); err != nil {
+				log.Printf("[gce:Start] runSCP: %+v", err)
+			}
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return nil, err
 	}
 
 	log.Print("[gce:Start] Completed")
@@ -328,7 +338,27 @@ func (s *System) Tail(ctx context.Context, m *bigmachine.Machine) (io.Reader, er
 	// When created, the container is Named "gceboot" (see manifest Container.Name in instance.go) but this is not reflected at runtime
 	// Instead the container will be named "klt-gceboot-${SUFFIX}" where ${SUFFIX} is a 4-character lowercase (!) identifer, e.g. ktl-gceboot-rmef
 	// The following filters containers by "gceboot", grabs the (hopefully single) ID and then follows the container's logs
-	return s.run(ctx, u.Hostname(), "docker container ls --filter=name=gceboot --format=\"{{.ID}}\" | xargs docker container logs --follow"), nil
+
+	// Let's split this to ensure that the container is available *before* proceeding
+
+	containerID := ""
+	for containerID == "" {
+		log.Print("[gce:Tail] Attempting to identify bigmachine container")
+		rdr := s.run(ctx, u.Hostname(), "docker container ls --filter=name=gceboot --format=\"{{.ID}}\"")
+		b, err := ioutil.ReadAll(rdr)
+		if err != nil {
+			return nil, err
+
+		}
+		if len(b) != 0 {
+			containerID = string(b)
+			log.Printf("[gce:Tail] %s", containerID)
+		} else {
+			log.Print("[gce:Tail] unable to find bigmachine container. Sleeping!")
+			time.Sleep(5 * time.Second)
+		}
+	}
+	return s.run(ctx, u.Hostname(), fmt.Sprintf("docker container logs --follow %s", containerID)), nil
 }
 func (s *System) run(ctx context.Context, addr, command string) io.Reader {
 	log.Print("[gce:run] Entered")
