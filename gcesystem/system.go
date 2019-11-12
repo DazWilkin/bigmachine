@@ -221,7 +221,9 @@ func (s *System) Shutdown() {
 	// Delete these instances
 	for _, name := range names {
 		log.Printf("[gce:Exit] Deleting %s", name)
-		Delete(ctx, s.Project, s.Zone, name)
+		// Avoid closing over only the first value of name
+		name := name
+		go Delete(ctx, s.Project, s.Zone, name)
 	}
 }
 
