@@ -10,11 +10,8 @@ RUN CGO_ENABLED=0 GOOS=linux \
     -o /go/bin/gceboot \
     cmd/gceboot/gceboot.go
 
-# Disadvantage of Scratch is that it contains no shell
-# FROM scratch
 FROM debian@sha256:415e40a8c50d4e40bd438de4a0142d8317ce3a168ff2b0f52433db1dd5020734
 
-# COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=build /go/bin/gceboot /
 
 # NB Non-root user is unable to run privileged e.g. no binding to port 443
