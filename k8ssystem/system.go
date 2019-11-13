@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/grailbio/base/sync/once"
@@ -46,6 +47,7 @@ func init() {
 }
 
 type System struct {
+	KubeConfig        string
 	ClusterName       string
 	BootstrapImage    string
 	authority         *authority.T
@@ -79,6 +81,8 @@ func (s *System) HTTPClient() *http.Client {
 }
 func (s *System) Init(b *bigmachine.B) error {
 	log.Print("[k8s:Init] Entered")
+
+	s.BootstrapImage = fmt.Sprintf("%s:%s", os.Getenv("IMG"), os.Getenv("TAG"))
 
 	// Mimicking  ec2machine.go implementation
 	var err error
@@ -120,7 +124,7 @@ func (s *System) ListenAndServe(addr string, handler http.Handler) error {
 		return err
 	}
 	if i < 1024 {
-		log.Printf("[gce:ListenAndServe] Serving on a privileged port (%d) -- if this fails, check firewalls, Dockerfile(USER) etc.", i)
+		log.Printf("[k8s:ListenAndServe] Serving on a privileged port (%d) -- if this fails, check firewalls, Dockerfile(USER) etc.", i)
 	}
 	_, config, err := s.authority.HTTPSConfig()
 	if err != nil {
@@ -167,9 +171,73 @@ func (s *System) Shutdown() {
 // TODO(dazwilkin) This should be a single kubectl --replicas=count call equivalent
 func (s *System) Start(ctx context.Context, count int) ([]*bigmachine.Machine, error) {
 	log.Print("[k8s:Start] Entered")
-	if count<0 
-	machines, err := Create(ctx, s.ClusterName, s.BootstrapImage, uint8(count))
-	return nil, nil
+	if count < 0 {
+		return nil, fmt.Errorf("unable to create negative number of machines")
+	}
+	if count > 256 {
+		return nil, fmt.Errorf("unable to create more than 256 machines")
+	}
+
+	err := NewClient(ctx, s.KubeConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	type Result struct {
+		machine *bigmachine.Machine
+		err     error
+	}
+	var wg sync.WaitGroup
+
+	// Create buffered (non-blocking) channel since we know the number of machines
+	// Results will either be success(bigmachine.Machine) or error
+	ch := make(chan Result, count)
+
+	// Iterate over Machine creation writing results to the channel
+	// Results are Operations or Errors
+	for i := 0; i < count; i++ {
+		wg.Add(1)
+		// TODO(dazwilkin) Convenient (during testing) to name this way; can't create more if existing instances haven't been deleted
+		name := fmt.Sprintf("%s-%02d", prefix, i)
+		go func(name string) {
+			defer wg.Done()
+			machine, err := Create(ctx, s.ClusterName, name, s.BootstrapImage, authorityDir)
+			ch <- Result{
+				machine: machine,
+				err:     err,
+			}
+		}(name)
+	}
+	log.Print("[k8s:Start] await completion of Go routines")
+	wg.Wait()
+	log.Print("[k8s:Start] Go routines have completed")
+	close(ch)
+
+	// Proccess the channel of Results
+	// If there were errors, there will be fewer than 'count' machines
+	var machines []*bigmachine.Machine
+	var failures uint
+	log.Print("[k8s:Start] Iterate over the channel")
+	for i := range ch {
+		if i.err != nil {
+			log.Printf("[k8s:Start:go] %+v", i.err)
+			failures = failures + 1
+		} else {
+			log.Printf("[k8s:Start] Adding bigmachine (%s)", i.machine.Addr)
+			machines = append(machines, i.machine)
+		}
+	}
+	log.Print("[k8s:Start] Done w/ channel")
+	if failures == uint(count) {
+		// Failed to create any machines; unrecoverable
+		return nil, fmt.Errorf("[k8s:Start] Failed to create any machines")
+	}
+	if failures > 0 {
+		// Failed to create some machines; recoverable
+		err = fmt.Errorf("[k8s:Start] %d/%d machines were not created", failures, count)
+	}
+
+	return machines, nil
 }
 
 // Tail attempts to tail the (remote?) bigmachine's logs
