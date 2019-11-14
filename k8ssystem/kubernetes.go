@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/grailbio/bigmachine"
@@ -106,6 +107,12 @@ func Create(ctx context.Context, clusterName, namespace, name, image string) (*b
 									Protocol: apiv1.ProtocolTCP,
 									// TODO(dazwilkin) global constant :-(
 									ContainerPort: port,
+								},
+								// TODO(dazwilkin) global constant :-(
+								{
+									Name:          "http",
+									Protocol:      apiv1.ProtocolTCP,
+									ContainerPort: 3333,
 								},
 							},
 							VolumeMounts: []apiv1.VolumeMount{
@@ -283,9 +290,11 @@ func Logs(ctx context.Context, clusterName, namespace, name string) (io.Reader, 
 func Lookup(ctx context.Context, clusterName, namespace, port string) (string, error) {
 	log.Print("[k8s:Lookup] Entered")
 	log.Printf("[k8s:Lookup] Finding service with NodePort==%s", port)
+
+	// TODO(dazwilkin) --selector=spec.ports[0].nodePort=port does not appear (!) to work
 	opts := metav1.ListOptions{
 		LabelSelector: "app=bigmachine",
-		// FieldSelector: fmt.Sprintf("spec.Ports[0].NodePort=%s", port),
+		// FieldSelector: fmt.Sprintf("spec.ports[0].nodePort=%s", port),
 	}
 	// Returns a list of services
 	sResp, err := c.CoreV1().Services(namespace).List(opts)
@@ -295,10 +304,23 @@ func Lookup(ctx context.Context, clusterName, namespace, port string) (string, e
 	if len(sResp.Items) == 0 {
 		return "", fmt.Errorf("no service was found")
 	}
-	if len(sResp.Items) > 1 {
-		return "", fmt.Errorf("multiple services were found; expected only one")
+
+	// TODO(dazwilkin) --selector=spec.ports[0].nodePort=port does not appear (!) to work
+	// if len(sResp.Items) > 1 {
+	// 	return "", fmt.Errorf("multiple services were found; expected only one")
+	// }
+	// return sResp.Items[0].GetName(), nil
+
+	// TODO(dazwilkin) --selector=spec.ports[0].nodePort=port does not appear (!) to work
+	var serviceName string
+	p, _ := strconv.Atoi(port)
+	q := int32(p)
+	for i := 0; i < len(sResp.Items) || serviceName == ""; i++ {
+		if sResp.Items[i].Spec.Ports[0].NodePort == q {
+			serviceName = sResp.Items[i].GetObjectMeta().GetName()
+		}
 	}
-	return sResp.Items[0].GetName(), nil
+	return serviceName, nil
 }
 
 // Namespace creates a Kubernetes Namespace object
