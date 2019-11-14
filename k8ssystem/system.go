@@ -98,7 +98,12 @@ func (s *System) Init(b *bigmachine.B) error {
 	if err != nil {
 		return err
 	}
+
+	log.Printf("[k8s:Init] Reading %s", authorityFilename)
 	s.authorityContents, err = ioutil.ReadFile(authorityFilename)
+	if err != nil {
+		log.Printf("[k8s:Init] Error Reading %s", authorityFilename)
+	}
 	return err
 }
 func (s *System) KeepaliveConfig() (period, timeout, rpcTimeout time.Duration) {
