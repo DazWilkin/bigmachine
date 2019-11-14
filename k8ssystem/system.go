@@ -9,6 +9,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -49,6 +50,7 @@ func init() {
 type System struct {
 	KubeConfig        string
 	ClusterName       string
+	Namespace         string
 	BootstrapImage    string
 	authority         *authority.T
 	authorityContents []byte
@@ -183,6 +185,20 @@ func (s *System) Start(ctx context.Context, count int) ([]*bigmachine.Machine, e
 		return nil, err
 	}
 
+	// Create the namespace if it doesn't exist
+	err = Namespace(ctx, s.ClusterName, s.Namespace)
+	if err != nil {
+		// Irrecoverable: if we're unable to create the Namespace, we're unable to proceed
+		return nil, err
+	}
+
+	// One benefit w/ Kubernetes is that we can create a Secret with the Authority file now and only once
+	err = Secret(ctx, s.ClusterName, s.Namespace, prefix, s.authorityContents)
+	if err != nil {
+		// Irrecoverable: if we're unable to create the Secret, we'll be unable to create the Deployment (depends on the volume-mounted Secret)
+		return nil, err
+	}
+
 	type Result struct {
 		machine *bigmachine.Machine
 		err     error
@@ -201,7 +217,7 @@ func (s *System) Start(ctx context.Context, count int) ([]*bigmachine.Machine, e
 		name := fmt.Sprintf("%s-%02d", prefix, i)
 		go func(name string) {
 			defer wg.Done()
-			machine, err := Create(ctx, s.ClusterName, name, s.BootstrapImage, authorityDir)
+			machine, err := Create(ctx, s.ClusterName, s.Namespace, name, s.BootstrapImage)
 			ch <- Result{
 				machine: machine,
 				err:     err,
@@ -236,7 +252,7 @@ func (s *System) Start(ctx context.Context, count int) ([]*bigmachine.Machine, e
 		// Failed to create some machines; recoverable
 		err = fmt.Errorf("[k8s:Start] %d/%d machines were not created", failures, count)
 	}
-
+	log.Print("[k8s:Start] Completed")
 	return machines, nil
 }
 
@@ -244,5 +260,16 @@ func (s *System) Start(ctx context.Context, count int) ([]*bigmachine.Machine, e
 // TODO(dazwilkin) this should be straightforward w/ kubectl get logs ...
 func (s *System) Tail(ctx context.Context, m *bigmachine.Machine) (io.Reader, error) {
 	log.Print("[k8s:Tail] Entered")
-	return nil, nil
+	// Convert bigmachine.Machine --> Service
+	// The only identifier we have for the Kubernetes resources is the machine's address
+	u, err := url.Parse(m.Addr)
+	if err != nil {
+		return nil, err
+	}
+	p := u.Port()
+	name, err := Lookup(ctx, s.ClusterName, s.Namespace, p)
+	if err != nil {
+		return nil, err
+	}
+	return Logs(ctx, s.ClusterName, s.Namespace, name)
 }
