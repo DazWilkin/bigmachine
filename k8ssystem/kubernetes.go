@@ -108,7 +108,7 @@ func Create(ctx context.Context, clusterName, namespace, name, image string) (*b
 									// TODO(dazwilkin) global constant :-(
 									ContainerPort: port,
 								},
-								// TODO(dazwilkin) global constant :-(
+								// TODO(dazwilkin) Do I need this one?
 								{
 									Name:          "http",
 									Protocol:      apiv1.ProtocolTCP,
