@@ -21,7 +21,6 @@ import (
 	"github.com/grailbio/base/log"
 	"github.com/grailbio/bigmachine"
 	"github.com/grailbio/bigmachine/ec2system"
-	"github.com/grailbio/bigmachine/gcesystem"
 )
 
 var (
@@ -42,11 +41,6 @@ func Start() *bigmachine.B {
 			InstanceType: *instanceType,
 			OnDemand:     *ondemand,
 		}
-	case "gce":
-		sys = &gcesystem.System{
-			// TOOD(dazwilkin) This should be configurable either through the command-line or environment
-		}
-
 	case "local":
 	}
 	b := bigmachine.Start(sys)
