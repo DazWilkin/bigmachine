@@ -3,7 +3,7 @@
 
 ## Bugs|FRs|Limitations
 
-+ Solution currently uses the default context
++ A Kubernetes limitation makes it challenging to deploying the remote nodes as a single StatefulSet; it's not easy to individually access the Pods
 
 ## Microk8s
 
@@ -47,6 +47,13 @@ gcloud container clusters get-credentials ${NAME} --project=${PROJECT} --region=
 NODE=$(kubectl get nodes/hades-canyon --output=jsonpath="{.status.addresses[0].address}")
 PORT=$(kubectl get services/bigmachine-00 --output=jsonpath="{.spec.ports[0].nodePort}")
 curl https://:${NODE}:${PORT}
+```
+
+and:
+
+```bash
+POD=$(kubectl get pods --selector=app=bigmachine --namespace=${NAMESPACE} --output=jsonpath="{.metadata.name}" | shuf -n 1)
+
 ```
 
 ## Tidy
