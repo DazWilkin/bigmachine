@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/url"
 	"path/filepath"
 	"strconv"
 	"time"
@@ -45,7 +46,7 @@ func NewClient(ctx context.Context, kubeconfig string) (err error) {
 	return nil
 }
 func Create(ctx context.Context, namespace, name, image, authorityDir string, loadbalancer bool) (*bigmachine.Machine, error) {
-	log.Print("[k8s:Create] Entered")
+	log.Printf("[k8s:Create] %s/%s: entered", namespace, name)
 	// This should (!) be a Deployment|StatefulSet consistent 'count' replicas
 	// But this make it challenging to expose each Pod as its own service
 	// Each Pod needs to be its own service because this is how bigmachine operates
@@ -207,7 +208,7 @@ func Create(ctx context.Context, namespace, name, image, authorityDir string, lo
 		// + not timed out
 		// + service returns "pending" load-balancer configuration
 		for retries := 0; err == nil && time.Since(start) < timeout && sResp.Status.LoadBalancer.Ingress == nil; retries++ {
-			log.Printf("[k8s:Create] %s/%s: awaiting Load-Balancer (sleeping: %v)", name, namespace, backoff)
+			log.Printf("[k8s:Create] %s/%s: awaiting Load-Balancer (sleeping: %v)", namespace, name, backoff)
 			time.Sleep(backoff)
 			backoff *= 2
 			sResp, err = c.CoreV1().Services(namespace).Get(name, metav1.GetOptions{})
@@ -249,6 +250,11 @@ func Create(ctx context.Context, namespace, name, image, authorityDir string, lo
 	addr := fmt.Sprintf("https://%s:%d", host, servicePort)
 	log.Printf("[k8s:Create] %s/%s: endpoint %s", namespace, name, addr)
 
+	// TODO(dazwilkin) remove this
+	log.Printf("[k8s:Create] %s/%s: sleeping to give the TCP Load-balancer time to stabilize", namespace, name)
+	time.Sleep(2 * time.Minute)
+
+	log.Printf("[k8s:Create] %s/%s: completed", namespace, name)
 	return &bigmachine.Machine{
 		Addr:     addr,
 		Maxprocs: 1,
@@ -298,16 +304,23 @@ func Logs(ctx context.Context, namespace, name string) (io.Reader, error) {
 
 // Lookup identifies the Kubernetes Service exposing the given (Node)Port
 // This function is necessary because bigmachine.Machine are only identifiable by address (which contains a port)
-func Lookup(ctx context.Context, namespace, port string) (string, error) {
+// A complexity is that the Lookup is dependent on the service type (NodePort|LoadBalancer)
+func Lookup(ctx context.Context, namespace, endpoint string, loadbalancer bool) (string, error) {
 	log.Print("[k8s:Lookup] Entered")
-	log.Printf("[k8s:Lookup] Finding service with NodePort==%s", port)
+	log.Printf("[k8s:Lookup] Finding service with endpoint==%s", endpoint)
 
-	// TODO(dazwilkin) --selector=spec.ports[0].nodePort=port does not appear (!) to work
+	// We'll need to parse the endpoint
+	u, err := url.Parse(endpoint)
+	if err != nil {
+		// if we can't, there's no need to proceed
+		return "", err
+	}
+
+	// Our bigmachines are labelled
 	opts := metav1.ListOptions{
 		LabelSelector: "app=bigmachine",
-		// FieldSelector: fmt.Sprintf("spec.ports[0].nodePort=%s", port),
 	}
-	// Returns a list of services
+	// Returns a list of services corresponding to the bigmachines
 	sResp, err := c.CoreV1().Services(namespace).List(opts)
 	if err != nil {
 		return "", err
@@ -316,20 +329,32 @@ func Lookup(ctx context.Context, namespace, port string) (string, error) {
 		return "", fmt.Errorf("no service was found")
 	}
 
-	// TODO(dazwilkin) --selector=spec.ports[0].nodePort=port does not appear (!) to work
-	// if len(sResp.Items) > 1 {
-	// 	return "", fmt.Errorf("multiple services were found; expected only one")
-	// }
-	// return sResp.Items[0].GetName(), nil
+	// Inline lambda that provides us with a function that matches (either --type=LoadBalancer|NodePort) against a service
+	match := func(u *url.URL, loadbalancer bool) func(s apiv1.Service) bool {
+		if loadbalancer {
+			// If the --type=LoadBalancer then we need to return a function that matches the endpoint's host with the loadbalancer's address
+			return func(s apiv1.Service) bool {
+				return s.Status.LoadBalancer.Ingress[0].IP == u.Hostname()
+			}
+		} else {
+			// If the --type=NodePort, then we need to return a function that matches the endpoint's port with the NodePort
+			i, _ := strconv.Atoi(u.Port())
+			nodeport := int32(i)
+			return func(s apiv1.Service) bool {
+				return s.Spec.Ports[0].NodePort == nodeport
+			}
+		}
+	}(u, loadbalancer)
 
-	// TODO(dazwilkin) --selector=spec.ports[0].nodePort=port does not appear (!) to work
 	var serviceName string
-	p, _ := strconv.Atoi(port)
-	q := int32(p)
+	// Iterate through the services until we're able to identify the service of interest
 	for i := 0; i < len(sResp.Items) || serviceName == ""; i++ {
-		if sResp.Items[i].Spec.Ports[0].NodePort == q {
+		if match(sResp.Items[i]) {
 			serviceName = sResp.Items[i].GetObjectMeta().GetName()
 		}
+	}
+	if serviceName == "" {
+		return "", fmt.Errorf("unable to find the service")
 	}
 	return serviceName, nil
 }
