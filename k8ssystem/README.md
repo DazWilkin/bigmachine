@@ -24,8 +24,9 @@ go run github.com/grailbio/bigmachine/cmd/bigpi \
 ## Bugs|FRs|Limitations
 
 + A Kubernetes limitation makes it challenging to deploying the remote nodes as a single StatefulSet; it's not easy to individually access the Pods
++ Currently expects the kubeconfig `current-context` to be set and pointing to the cluster to be used
 
-## Microk8s
+## [microk8s](https://microk8s.io)
 
 ```bash
 SYSTEM=k8s
@@ -38,7 +39,7 @@ go run github.com/grailbio/bigmachine/cmd/bigpi \
 ```
 **NB** `--bigm.loadbalancer=false` because microk8s does not support service `--type=LoadBalancer`
 
-## Kubernetes Engine
+## [Kubernetes Engine](https://cloud.google.com/kubernete-engine)
 
 ```bash
 PROJECT=
@@ -95,7 +96,7 @@ Then:
 gcloud container clusters delete ${NAME} --project=${PROJECT} --region=${REGION} --quiet
 ```
 **NB** This deletes the cluster's context from `~/.kube/config` as well
-## Digital Ocean
+## [Digital Ocean Kubernetes](https://www.digitalocean.com/products/kubernetes/)
 
 ```bash
 NAME=bigmachine
