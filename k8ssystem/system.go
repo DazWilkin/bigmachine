@@ -50,7 +50,6 @@ func init() {
 
 type System struct {
 	KubeConfig        string
-	ClusterName       string
 	Namespace         string
 	BootstrapImage    string
 	authority         *authority.T
@@ -178,7 +177,7 @@ func (s *System) Read(ctx context.Context, m *bigmachine.Machine, filename strin
 }
 func (s *System) Shutdown() {
 	log.Print("[k8s:Shutdown] Entered")
-	Delete(context.Background(), s.ClusterName, s.Namespace)
+	Delete(context.Background(), s.Namespace)
 }
 
 // Start attempts to create 'count' Pods (!) (on distinct Nodes?) returning a list of machines and any failures
@@ -198,14 +197,14 @@ func (s *System) Start(ctx context.Context, count int) ([]*bigmachine.Machine, e
 	}
 
 	// Create the namespace if it doesn't exist
-	err = Namespace(ctx, s.ClusterName, s.Namespace)
+	err = Namespace(ctx, s.Namespace)
 	if err != nil {
 		// Irrecoverable: if we're unable to create the Namespace, we're unable to proceed
 		return nil, err
 	}
 
 	// One benefit w/ Kubernetes is that we can create a Secret with the Authority file now and only once
-	err = Secret(ctx, s.ClusterName, s.Namespace, prefix, s.authorityContents)
+	err = Secret(ctx, s.Namespace, prefix, s.authorityContents)
 	if err != nil {
 		// Irrecoverable: if we're unable to create the Secret, we'll be unable to create the Deployment (depends on the volume-mounted Secret)
 		return nil, err
@@ -229,7 +228,7 @@ func (s *System) Start(ctx context.Context, count int) ([]*bigmachine.Machine, e
 		name := fmt.Sprintf("%s-%02d", prefix, i)
 		go func(name string) {
 			defer wg.Done()
-			machine, err := Create(ctx, s.ClusterName, s.Namespace, name, s.BootstrapImage, authorityDir)
+			machine, err := Create(ctx, s.Namespace, name, s.BootstrapImage, authorityDir)
 			ch <- Result{
 				machine: machine,
 				err:     err,
@@ -279,9 +278,9 @@ func (s *System) Tail(ctx context.Context, m *bigmachine.Machine) (io.Reader, er
 		return nil, err
 	}
 	p := u.Port()
-	name, err := Lookup(ctx, s.ClusterName, s.Namespace, p)
+	name, err := Lookup(ctx, s.Namespace, p)
 	if err != nil {
 		return nil, err
 	}
-	return Logs(ctx, s.ClusterName, s.Namespace, name)
+	return Logs(ctx, s.Namespace, name)
 }
