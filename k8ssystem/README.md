@@ -7,7 +7,16 @@
 
 ## Microk8s
 
-
+```bash
+SYSTEM=k8s
+go run github.com/grailbio/bigmachine/cmd/bigpi \
+--bigm.system=${SYSTEM} \
+--bigm.namespace=${NAMESPACE} \
+--bigm.loadbalancer=false \
+--nmachine=16 \
+--nsamples=100000
+```
+**NB** `--bigm.loadbalancer=false` because microk8s does not support service `--type=LoadBalancer`
 
 ## Kubernetes Engine
 
@@ -22,7 +31,7 @@ And:
 ```bash
 NAME=bigmachine
 REGION=us-west1
-gcloud beta container cluster create ${NAME} \
+gcloud beta container clusters create ${NAME} \
 --no-enable-basic-auth \
 --release-channel="regular" \
 --machine-type="f1-micro" \
@@ -32,7 +41,7 @@ gcloud beta container cluster create ${NAME} \
 --enable-ip-alias \
 --addons HorizontalPodAutoscaling,HttpLoadBalancing \
 --enable-autoupgrade \
---enable-autorepair
+--enable-autorepair \
 --region=${REGION} \
 --project=${PROJECT}
 ```
@@ -40,6 +49,63 @@ This pulls the credentials into ${HOME}/.kube/config *and* set the default conte
 ```
 gcloud container clusters get-credentials ${NAME} --project=${PROJECT} --region=${REGION}
 ```
+then:
+```bash
+NAMESPACE=saturn
+SYSTEM=k8s
+go run github.com/grailbio/bigmachine/cmd/bigpi \
+--bigm.system=${SYSTEM} \
+--bigm.namespace=${NAMESPACE} \
+--bigm.loadbalancer=true \
+--nmachine=3 \
+--nsamples=100000
+```
+**NB** Implementation creates one Load-balancer per `nmachine`; to save costs, keeping this number low(er)
+
+You may monitor the Load-balancers being provisioned:
+```bash
+kubectl get services --namespace=saturn
+NAME            TYPE           CLUSTER-IP   EXTERNAL-IP    PORT(S)         AGE
+bigmachine-00   LoadBalancer   10.0.2.125   34.82.173.39   443:31425/TCP   91s
+bigmachine-01   LoadBalancer   10.0.9.55    <pending>      443:32561/TCP   91s
+bigmachine-02   LoadBalancer   10.0.10.12   <pending>      443:30226/TCP   91s
+```
+Then:
+```bash
+gcloud container clusters delete ${NAME} --project=${PROJECT} --region=${REGION} --quiet
+```
+
+## Digital Ocean
+
+```bash
+NAME=bigmachine
+doctl kubernetes cluster create ${NAME} \
+--auto-upgrade \
+--node-pool="name=default;size=s-1vcpu-2gb;count=2" \
+--region=sfo2 \
+--update-kubeconfig \
+--version=1.16.2-do.0 \
+--wait=true
+```
+then:
+```bash
+NAMESPACE=saturn
+SYSTEM=k8s
+go run github.com/grailbio/bigmachine/cmd/bigpi \
+--bigm.system=${SYSTEM} \
+--bigm.namespace=${NAMESPACE} \
+--bigm.loadbalancer=true \
+--nmachine=2 \
+--nsamples=100000
+```
+**NB** Implementation creates one Load-balancer per `nmachine`; to save costs, keeping this number low(er)
+and:
+```bash
+doctl kubernetes cluster delete ${NAME} \
+--update-kubeconfig \
+--force
+```
+
 
 ## Debugging
 
