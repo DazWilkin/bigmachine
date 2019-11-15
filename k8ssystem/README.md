@@ -114,6 +114,17 @@ doctl kubernetes cluster delete ${NAME} \
 --update-kubeconfig \
 --force
 ```
+Must delete Load-balancer separately:
+```bash
+for LB in $(\
+  doctl compute load-balancer list \
+  --output=json \
+  | jq -r .[].name)
+do
+  # async
+  doctl compute load-balancer delete ${LB} --force &
+done
+```
 
 
 ## Debugging
