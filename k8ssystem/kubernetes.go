@@ -24,9 +24,6 @@ import (
 const (
 	prefix = "bigmachine"
 )
-const (
-	loadbalancer = true
-)
 
 var c *kubernetes.Clientset
 
@@ -47,7 +44,7 @@ func NewClient(ctx context.Context, kubeconfig string) (err error) {
 	}
 	return nil
 }
-func Create(ctx context.Context, namespace, name, image, authorityDir string) (*bigmachine.Machine, error) {
+func Create(ctx context.Context, namespace, name, image, authorityDir string, loadbalancer bool) (*bigmachine.Machine, error) {
 	log.Print("[k8s:Create] Entered")
 	// This should (!) be a Deployment|StatefulSet consistent 'count' replicas
 	// But this make it challenging to expose each Pod as its own service

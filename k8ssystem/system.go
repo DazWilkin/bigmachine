@@ -51,6 +51,7 @@ func init() {
 type System struct {
 	KubeConfig        string
 	Namespace         string
+	LoadBalancer      bool
 	BootstrapImage    string
 	authority         *authority.T
 	authorityContents []byte
@@ -228,7 +229,7 @@ func (s *System) Start(ctx context.Context, count int) ([]*bigmachine.Machine, e
 		name := fmt.Sprintf("%s-%02d", prefix, i)
 		go func(name string) {
 			defer wg.Done()
-			machine, err := Create(ctx, s.Namespace, name, s.BootstrapImage, authorityDir)
+			machine, err := Create(ctx, s.Namespace, name, s.BootstrapImage, authorityDir, s.LoadBalancer)
 			ch <- Result{
 				machine: machine,
 				err:     err,
