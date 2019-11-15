@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -168,10 +169,16 @@ func (s *System) Name() string {
 }
 func (s *System) Read(ctx context.Context, m *bigmachine.Machine, filename string) (io.Reader, error) {
 	log.Print("[k8s:Read] Entered")
-	return nil, nil
+	log.Printf("[k8s:Read] filename: %s", filename)
+
+	// TODO(dazwilkin) How to remotely stream a Pod's container's /dev/kmsg file?
+	log.Printf("[k8s:Read] WARNING: Spoofing the reader to get this working")
+	r := strings.NewReader("WARNING: Spoofing the reader to get this working")
+	return r, nil
 }
 func (s *System) Shutdown() {
 	log.Print("[k8s:Shutdown] Entered")
+	Delete(context.Background(), s.ClusterName, s.Namespace)
 }
 
 // Start attempts to create 'count' Pods (!) (on distinct Nodes?) returning a list of machines and any failures
@@ -222,7 +229,7 @@ func (s *System) Start(ctx context.Context, count int) ([]*bigmachine.Machine, e
 		name := fmt.Sprintf("%s-%02d", prefix, i)
 		go func(name string) {
 			defer wg.Done()
-			machine, err := Create(ctx, s.ClusterName, s.Namespace, name, s.BootstrapImage)
+			machine, err := Create(ctx, s.ClusterName, s.Namespace, name, s.BootstrapImage, authorityDir)
 			ch <- Result{
 				machine: machine,
 				err:     err,
