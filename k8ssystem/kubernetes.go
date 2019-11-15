@@ -194,7 +194,7 @@ func Create(ctx context.Context, namespace, name, image, authorityDir string, lo
 	log.Printf("[k8s:Create] %s/%s: service created", namespace, name)
 
 	var host string
-	var servicePort int
+	var servicePort int32
 	if loadbalancer {
 		servicePort = port
 		// LoadBalancer provisioning takes time and we can't create the bigmachine.Machine until this succeeds
@@ -239,7 +239,7 @@ func Create(ctx context.Context, namespace, name, image, authorityDir string, lo
 		}
 	} else {
 		// NodePorts are provisioned "immediately"
-		servicePort := sResp.Spec.Ports[0].NodePort
+		servicePort = sResp.Spec.Ports[0].NodePort
 
 		// TODO(dazwilkin) This should correctly return the external IP of (one of) the Node(s)
 		host = "localhost"
