@@ -179,10 +179,10 @@ func Create(ctx context.Context, namespace, name, image, authorityDir string, lo
 			},
 			Type: func() apiv1.ServiceType {
 				if !loadbalancer {
-					log.Print("[k8s:Created] Running on a Kubernetes implementation without a TCP Load-balancer ('--type=NodePort')")
+					log.Printf("[k8s:Create] %s/%s: running on a Kubernetes implementation without a TCP Load-balancer ('--type=NodePort')", namespace, name)
 					return apiv1.ServiceTypeNodePort
 				}
-				log.Print("[k8s:Created] Running on a Kubernetes implementation with a TCP Load-balancer ('--type=LoadBalancer')")
+				log.Printf("[k8s:Create] %s/%s: running on a Kubernetes implementation with a TCP Load-balancer ('--type=LoadBalancer')", namespace, name)
 				return apiv1.ServiceTypeLoadBalancer
 			}(),
 		},
