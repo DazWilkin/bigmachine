@@ -1,6 +1,26 @@
 
 # Kubernetes
 
+## Installation
+
+```Golang
+case "k8s":
+	sys = &k8ssystem.System{
+		KubeConfig:   *kubeconfig,
+		Namespace:    *namespace,
+		LoadBalancer: *loadbalancer,
+	}
+```
+E.g.:
+```bash
+go run github.com/grailbio/bigmachine/cmd/bigpi \
+--bigm.system=k8s \
+--bigm.namespace=${NAMESPACE} \
+--bigm.loadbalancer=true \
+--nmachine=2 \
+--nsamples=100000
+```
+
 ## Bugs|FRs|Limitations
 
 + A Kubernetes limitation makes it challenging to deploying the remote nodes as a single StatefulSet; it's not easy to individually access the Pods
@@ -34,7 +54,7 @@ REGION=us-west1
 gcloud beta container clusters create ${NAME} \
 --no-enable-basic-auth \
 --release-channel="regular" \
---machine-type="f1-micro" \
+--machine-type="n1-standard-1" \
 --image-type="COS_CONTAINERD" \
 --num-nodes="1" \
 --enable-stackdriver-kubernetes \
@@ -45,7 +65,7 @@ gcloud beta container clusters create ${NAME} \
 --region=${REGION} \
 --project=${PROJECT}
 ```
-This pulls the credentials into ${HOME}/.kube/config *and* set the default context
+This pulls the credentials into ${HOME}/.kube/config *and* sets the default context
 ```
 gcloud container clusters get-credentials ${NAME} --project=${PROJECT} --region=${REGION}
 ```
@@ -74,7 +94,7 @@ Then:
 ```bash
 gcloud container clusters delete ${NAME} --project=${PROJECT} --region=${REGION} --quiet
 ```
-
+**NB** This deletes the cluster's context from `~/.kube/config` as well
 ## Digital Ocean
 
 ```bash
@@ -104,17 +124,17 @@ go run github.com/grailbio/bigmachine/cmd/bigpi \
 ```bash
 kubectl get services --namespace=neptune
 NAME            TYPE           CLUSTER-IP       EXTERNAL-IP       PORT(S)         AGE
-bigmachine-00   LoadBalancer   10.245.147.70    157.230.199.197   443:30657/TCP   3m11s
-bigmachine-01   LoadBalancer   10.245.156.199   138.68.39.177     443:31043/TCP   3m11s
+bigmachine-00   LoadBalancer   10.245.131.167   157.230.199.197   443:31289/TCP   4m3s
+bigmachine-01   LoadBalancer   10.245.75.196    134.209.142.48    443:32616/TCP   4m3s
 ```
-
 and:
 ```bash
-doctl kubernetes cluster delete ${NAME} \
---update-kubeconfig \
---force
+doctl compute load-balancer list --output=json | jq -r .[].ip
+134.209.142.48
+157.230.199.197
 ```
-Must delete Load-balancer separately:
+and:
+If the solution fails to delete the Kubernetes namespace then the Load-balancers won't be deleted and must delete Load-balancer separately:
 ```bash
 for LB in $(\
   doctl compute load-balancer list \
@@ -125,7 +145,11 @@ do
   doctl compute load-balancer delete ${LB} --force &
 done
 ```
-
+```bash
+doctl kubernetes cluster delete ${NAME} \
+--update-kubeconfig \
+--force
+```
 
 ## Debugging
 
