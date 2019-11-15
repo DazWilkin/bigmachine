@@ -193,45 +193,28 @@ func Create(ctx context.Context, namespace, name, image, authorityDir string, lo
 	}
 	log.Printf("[k8s:Create] %s/%s: service created", namespace, name)
 
-	// NodePorts are provisioned "immediately"
-	port, err := func(s apiv1.ServiceSpec) (int32, error) {
-		if len(s.Ports) == 0 {
-			return 0, fmt.Errorf("Unable to determine NodePort; no ports found")
-		}
-		if len(s.Ports) > 1 {
-			return 0, fmt.Errorf("Unable to determine which (of %d) NodePorts to use", len(s.Ports))
-		}
-		if s.Ports[0].NodePort == 0 {
-			return 0, fmt.Errorf("NodePort is set to zero")
-		}
-		return s.Ports[0].NodePort, nil
-	}(sResp.Spec)
-	if err != nil {
-		log.Printf("[k8s:Create] %s/%s: unable to determine NodePort", namespace, name)
-		return nil, err
-	}
-	if port == 0 {
-		return nil, fmt.Errorf("Nodeport is zero")
-	}
-	log.Printf("[k8s:Create] %s/%s: service NodePort==%d", namespace, name, port)
-
 	var host string
+	var servicePort int
 	if loadbalancer {
+		servicePort = port
 		// LoadBalancer provisioning takes time and we can't create the bigmachine.Machine until this succeeds
 		start := time.Now()
-		timeout := 30 * time.Second
+		timeout := 512 * time.Second
+		backoff := 1 * time.Second
+		log.Printf("[k8s:Create] %s/%s: provisioning TCP Load-balancer (timeout: %v)", namespace, name, timeout)
 		// While there are:
 		// + no errors
 		// + not timed out
 		// + service returns "pending" load-balancer configuration
 		for retries := 0; err == nil && time.Since(start) < timeout && sResp.Status.LoadBalancer.Ingress == nil; retries++ {
-			log.Printf("[k8s:Create] %s/%s: awaiting Load-Balancer", name, namespace)
-			time.Sleep(5 * time.Second)
+			log.Printf("[k8s:Create] %s/%s: awaiting Load-Balancer (sleeping: %v)", name, namespace, backoff)
+			time.Sleep(backoff)
+			backoff *= 2
 			sResp, err = c.CoreV1().Services(namespace).Get(name, metav1.GetOptions{})
 		}
 		// Timed out without identifying a Load-balancer
 		if err == nil && sResp.Status.LoadBalancer.Ingress == nil {
-			log.Printf("[k8s:Create] %s/%s: unable to provision Load-Balancer before timeout", name, namespace)
+			log.Printf("[k8s:Create] %s/%s: unable to provision Load-Balancer before timeout", namespace, name)
 			return nil, fmt.Errorf("Unable to provision a load-balancer before timeout")
 		}
 		if err != nil && sResp.Status.LoadBalancer.Ingress != nil {
@@ -255,13 +238,16 @@ func Create(ctx context.Context, namespace, name, image, authorityDir string, lo
 			return nil, fmt.Errorf("Load-balancer was created but without an IP address")
 		}
 	} else {
+		// NodePorts are provisioned "immediately"
+		servicePort := sResp.Spec.Ports[0].NodePort
+
 		// TODO(dazwilkin) This should correctly return the external IP of (one of) the Node(s)
 		host = "localhost"
 		log.Printf("[k8s:Create] WARNING: Using '%s' as a Node IP ('--type=NodePort')", host)
 
 	}
-	addr := fmt.Sprintf("https://%s:%d", host, port)
-	log.Printf("[k8s:Create] %s/%s: Load-balancer provisioned on %s", namespace, name, addr)
+	addr := fmt.Sprintf("https://%s:%d", host, servicePort)
+	log.Printf("[k8s:Create] %s/%s: endpoint %s", namespace, name, addr)
 
 	return &bigmachine.Machine{
 		Addr:     addr,
