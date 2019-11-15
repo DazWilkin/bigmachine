@@ -239,9 +239,9 @@ func Create(ctx context.Context, namespace, name, image, authorityDir string, lo
 			return nil, fmt.Errorf("Load-balancer was created but without an IP address")
 		}
 		// TODO(dazwilkin) improve this
-		sleep := 90 * time.Second
-		log.Printf("[k8s:Create] %s/%s: Giving the TCP Load-balancer time to stabilize (sleeping: %v)", namespace, name, sleep)
-		time.Sleep(sleep)
+		// sleep := 90 * time.Second
+		// log.Printf("[k8s:Create] %s/%s: Giving the TCP Load-balancer time to stabilize (sleeping: %v)", namespace, name, sleep)
+		// time.Sleep(sleep)
 
 	} else {
 		// NodePorts are provisioned "immediately"
