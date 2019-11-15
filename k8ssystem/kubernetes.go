@@ -115,6 +115,20 @@ func Create(ctx context.Context, clusterName, namespace, name, image string) (*b
 									ContainerPort: 3333,
 								},
 							},
+							Env: []apiv1.EnvVar{
+								{
+									Name:  "BIGMACHINE_MODE",
+									Value: "machine",
+								},
+								{
+									Name:  "BIGMACHINE_SYSTEM",
+									Value: systemName,
+								},
+								{
+									Name:  "BIGMACHINE_ADDR",
+									Value: fmt.Sprintf("0.0.0.0:%d", port),
+								},
+							},
 							VolumeMounts: []apiv1.VolumeMount{
 								{
 									Name:      "tmp",
