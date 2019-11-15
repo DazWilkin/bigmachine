@@ -9,7 +9,6 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -171,9 +170,9 @@ func (s *System) Read(ctx context.Context, m *bigmachine.Machine, filename strin
 	log.Print("[k8s:Read] Entered")
 	log.Printf("[k8s:Read] filename: %s", filename)
 
-	// TODO(dazwilkin) How to remotely stream a Pod's container's /dev/kmsg file?
-	log.Printf("[k8s:Read] WARNING: Spoofing the reader to get this working")
-	r := strings.NewReader("WARNING: Spoofing the reader to get this working")
+	// TODO(dazwilkin) Think this is only used to stream /dev/kmsg from a remote; this file does not exist in this implementation
+	log.Printf("[k8s:Read] WARNING: function does not attempt to open the machine's filename (%s)", filename)
+	r := strings.NewReader(fmt.Sprintf("WARNING: filename (%s) was not opened", filename))
 	return r, nil
 }
 func (s *System) Shutdown() {
@@ -274,12 +273,7 @@ func (s *System) Tail(ctx context.Context, m *bigmachine.Machine) (io.Reader, er
 	log.Print("[k8s:Tail] Entered")
 	// Convert bigmachine.Machine --> Service
 	// The only identifier we have for the Kubernetes resources is the machine's address
-	u, err := url.Parse(m.Addr)
-	if err != nil {
-		return nil, err
-	}
-	p := u.Port()
-	name, err := Lookup(ctx, s.Namespace, p)
+	name, err := Lookup(ctx, s.Namespace, m.Addr, s.LoadBalancer)
 	if err != nil {
 		return nil, err
 	}
