@@ -21,7 +21,6 @@ import (
 	"github.com/grailbio/base/log"
 	"github.com/grailbio/bigmachine"
 	"github.com/grailbio/bigmachine/ec2system"
-	"github.com/grailbio/bigmachine/gcesystem"
 	"github.com/grailbio/bigmachine/k8ssystem"
 )
 
@@ -29,9 +28,9 @@ var (
 	systemFlag   = flag.String("bigm.system", "local", "system on which to run the bigmachine")
 	instanceType = flag.String("bigm.ec2type", "m3.medium", "instance type with which to launch a bigmachine EC2 cluster")
 	ondemand     = flag.Bool("bigm.ec2ondemand", false, "use ec2 on-demand instances instead of spot")
-	kubeconfig   = flag.String("bigm.kubeconfig", ".kube/config", "location of Kubernetes configuration file")
-	clusterName  = flag.String("bigm.clustername", "", "Kubernetes cluster name")
+	kubeconfig   = flag.String("bigm.kubeconfig", "", "location of Kubernetes configuration file")
 	namespace    = flag.String("bigm.namespace", "default", "Kubernetes namespace")
+	loadbalancer = flag.Bool("bigm.loadbalancer", true, "whether the Kubernetes system supported TCP Load-Balancing")
 )
 
 // Start configures a bigmachine System based on the program's flags,
@@ -46,16 +45,12 @@ func Start() *bigmachine.B {
 			InstanceType: *instanceType,
 			OnDemand:     *ondemand,
 		}
-	case "gce":
-		sys = &gcesystem.System{
-			// TOOD(dazwilkin) This should be configurable either through the command-line or environment
-		}
 	case "k8s":
 		// TODO(dazwilkin) This should be configurable either through the command-line or environment
 		sys = &k8ssystem.System{
-			KubeConfig:  *kubeconfig,
-			ClusterName: *clusterName,
-			Namespace:   *namespace,
+			KubeConfig:   *kubeconfig,
+			Namespace:    *namespace,
+			LoadBalancer: *loadbalancer,
 		}
 	case "local":
 	}
