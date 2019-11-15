@@ -269,6 +269,17 @@ func Create(ctx context.Context, clusterName, namespace, name, image, authorityD
 		NoExec:   false,
 	}, nil
 }
+func Delete(ctx context.Context, clusterName, namespace string) error {
+	log.Print("[k8s:Delete] Entered")
+	// Deleting a namespace is the easiest way to delete everything in it
+	// Unless the namespace is default :-(
+	if namespace == "default" {
+		log.Print("[k8s:Delete] Not yet implemented. Please delete everything for yourself")
+		return fmt.Errorf("not yet implemented for the default namespace")
+	}
+	// Otherwise
+	return c.CoreV1().Namespaces().Delete(namespace, &metav1.DeleteOptions{})
+}
 
 // Logs returns a streaming reader to the logs from the Pod associated with the given (Service) name
 func Logs(ctx context.Context, clusterName, namespace, name string) (io.Reader, error) {
