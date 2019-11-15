@@ -25,6 +25,7 @@ go run github.com/grailbio/bigmachine/cmd/bigpi \
 
 + A Kubernetes limitation makes it challenging to deploying the remote nodes as a single StatefulSet; it's not easy to individually access the Pods
 + Currently expects the kubeconfig `current-context` to be set and pointing to the cluster to be used
++ I suspect (!) service logs are not being tailed (correctly)
 
 ## [microk8s](https://microk8s.io)
 
