@@ -47,7 +47,7 @@ func NewClient(ctx context.Context, kubeconfig string) (err error) {
 	}
 	return nil
 }
-func Create(ctx context.Context, clusterName, namespace, name, image string) (*bigmachine.Machine, error) {
+func Create(ctx context.Context, clusterName, namespace, name, image, authorityDir string) (*bigmachine.Machine, error) {
 	log.Print("[k8s:Create] Entered")
 	// This should (!) be a Deployment|StatefulSet consistent 'count' replicas
 	// But this make it challenging to expose each Pod as its own service
@@ -89,7 +89,7 @@ func Create(ctx context.Context, clusterName, namespace, name, image string) (*b
 							},
 						},
 						{
-							Name: "secrets",
+							Name: "authority",
 							VolumeSource: apiv1.VolumeSource{
 								Secret: &apiv1.SecretVolumeSource{
 									SecretName: "bigmachine",
@@ -136,9 +136,9 @@ func Create(ctx context.Context, clusterName, namespace, name, image string) (*b
 									MountPath: "/tmp",
 								},
 								{
-									Name:      "secrets",
+									Name:      "authority",
 									ReadOnly:  true,
-									MountPath: "/secrets",
+									MountPath: "/" + authorityDir,
 								},
 							},
 						},
