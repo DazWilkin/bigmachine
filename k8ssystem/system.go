@@ -52,6 +52,7 @@ type System struct {
 	Namespace         string
 	LoadBalancer      bool
 	BootstrapImage    string
+	kubernetes        *Kubernetes
 	authority         *authority.T
 	authorityContents []byte
 	clientOnce        once.Task
@@ -177,7 +178,7 @@ func (s *System) Read(ctx context.Context, m *bigmachine.Machine, filename strin
 }
 func (s *System) Shutdown() {
 	log.Print("[k8s:Shutdown] Entered")
-	Delete(context.Background(), s.Namespace)
+	s.kubernetes.Delete(context.Background(), s.Namespace)
 }
 
 // Start attempts to create 'count' Pods (!) (on distinct Nodes?) returning a list of machines and any failures
@@ -191,20 +192,21 @@ func (s *System) Start(ctx context.Context, count int) ([]*bigmachine.Machine, e
 		return nil, fmt.Errorf("unable to create more than 256 machines")
 	}
 
-	err := NewClient(ctx, s.KubeConfig)
+	var err error
+	s.kubernetes, err = NewClient(ctx, s.KubeConfig)
 	if err != nil {
 		return nil, err
 	}
 
 	// Create the namespace if it doesn't exist
-	err = Namespace(ctx, s.Namespace)
+	err = s.kubernetes.Namespace(ctx, s.Namespace)
 	if err != nil {
 		// Irrecoverable: if we're unable to create the Namespace, we're unable to proceed
 		return nil, err
 	}
 
 	// One benefit w/ Kubernetes is that we can create a Secret with the Authority file now and only once
-	err = Secret(ctx, s.Namespace, prefix, s.authorityContents)
+	err = s.kubernetes.Secret(ctx, s.Namespace, prefix, s.authorityContents)
 	if err != nil {
 		// Irrecoverable: if we're unable to create the Secret, we'll be unable to create the Deployment (depends on the volume-mounted Secret)
 		return nil, err
@@ -228,7 +230,7 @@ func (s *System) Start(ctx context.Context, count int) ([]*bigmachine.Machine, e
 		name := fmt.Sprintf("%s-%02d", prefix, i)
 		go func(name string) {
 			defer wg.Done()
-			machine, err := Create(ctx, s.Namespace, name, s.BootstrapImage, authorityDir, s.LoadBalancer)
+			machine, err := s.kubernetes.Create(ctx, s.Namespace, name, s.BootstrapImage, authorityDir, s.LoadBalancer)
 			ch <- Result{
 				machine: machine,
 				err:     err,
@@ -273,9 +275,9 @@ func (s *System) Tail(ctx context.Context, m *bigmachine.Machine) (io.Reader, er
 	log.Print("[k8s:Tail] Entered")
 	// Convert bigmachine.Machine --> Service
 	// The only identifier we have for the Kubernetes resources is the machine's address
-	name, err := Lookup(ctx, s.Namespace, m.Addr, s.LoadBalancer)
+	name, err := s.kubernetes.Lookup(ctx, s.Namespace, m.Addr, s.LoadBalancer)
 	if err != nil {
 		return nil, err
 	}
-	return Logs(ctx, s.Namespace, name)
+	return s.kubernetes.Logs(ctx, s.Namespace, name)
 }
