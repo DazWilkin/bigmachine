@@ -87,6 +87,7 @@ doctl kubernetes cluster create ${NAME} \
 --version=1.16.2-do.0 \
 --wait=true
 ```
+**NB** `--update-kubeconfig` fails (Snap?) on my machine; must edit these manually
 then:
 ```bash
 NAMESPACE=saturn
@@ -99,6 +100,14 @@ go run github.com/grailbio/bigmachine/cmd/bigpi \
 --nsamples=100000
 ```
 **NB** Implementation creates one Load-balancer per `nmachine`; to save costs, keeping this number low(er)
+
+```bash
+kubectl get services --namespace=neptune
+NAME            TYPE           CLUSTER-IP       EXTERNAL-IP       PORT(S)         AGE
+bigmachine-00   LoadBalancer   10.245.147.70    157.230.199.197   443:30657/TCP   3m11s
+bigmachine-01   LoadBalancer   10.245.156.199   138.68.39.177     443:31043/TCP   3m11s
+```
+
 and:
 ```bash
 doctl kubernetes cluster delete ${NAME} \
