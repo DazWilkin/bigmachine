@@ -29,6 +29,7 @@ var (
 	instanceType = flag.String("bigm.ec2type", "m3.medium", "instance type with which to launch a bigmachine EC2 cluster")
 	ondemand     = flag.Bool("bigm.ec2ondemand", false, "use ec2 on-demand instances instead of spot")
 	kubeconfig   = flag.String("bigm.kubeconfig", "", "location of Kubernetes configuration file")
+	image        = flag.String("bigm.image", "", "Bootstrap Image to be deployed on remote nodes")
 	namespace    = flag.String("bigm.namespace", "default", "Kubernetes namespace")
 	loadbalancer = flag.Bool("bigm.loadbalancer", true, "whether the Kubernetes system supported TCP Load-Balancing")
 )
@@ -46,11 +47,17 @@ func Start() *bigmachine.B {
 			OnDemand:     *ondemand,
 		}
 	case "k8s":
-		// TODO(dazwilkin) This should be configurable either through the command-line or environment
+		if *kubeconfig == "" {
+			log.Fatalf("Kubernetes configuration file ('--bigm.kubeconfig') is required")
+		}
+		if *image == "" {
+			log.Fatalf("Kubernetes requires bootstrap image ('--bigm.image')")
+		}
 		sys = &k8ssystem.System{
-			KubeConfig:   *kubeconfig,
-			Namespace:    *namespace,
-			LoadBalancer: *loadbalancer,
+			KubeConfig:     *kubeconfig,
+			BootstrapImage: *image,
+			Namespace:      *namespace,
+			LoadBalancer:   *loadbalancer,
 		}
 	case "local":
 	}
