@@ -29,17 +29,24 @@ var (
 	}
 )
 
-// TODO(dazwilkin) would it be preferable to represent this as a new type?
-var service *compute.Service
+// ComputeEngine is a type that represents methods applied to Google Compute Engine service
+type ComputeEngine struct {
+	s *compute.Service
+}
 
 // NewClient is a super-thin wrapper around Compute Engine's NewService call
-func NewClient(ctx context.Context) (err error) {
-	service, err = compute.NewService(ctx)
-	return
+func NewClient(ctx context.Context) (*ComputeEngine, error) {
+	s, err := compute.NewService(ctx)
+	if err != nil {
+		return &ComputeEngine{}, err
+	}
+	return &ComputeEngine{
+		s: s,
+	}, nil
 }
 
 // Create creates a Compute Engine instance returning a bigmachine.Machine
-func Create(ctx context.Context, project, zone, name, image, authorityDir string) (*bigmachine.Machine, error) {
+func (c *ComputeEngine) Create(ctx context.Context, project, zone, name, image, authorityDir string) (*bigmachine.Machine, error) {
 	if project == "" {
 		return nil, fmt.Errorf("[Create] Requires a GCP Project ID")
 	}
@@ -189,7 +196,7 @@ func Create(ctx context.Context, project, zone, name, image, authorityDir string
 		},
 	}
 	log.Printf("[Create] %s: being created", name)
-	operation, err := service.Instances.Insert(project, zone, instance).Context(ctx).Do()
+	operation, err := c.s.Instances.Insert(project, zone, instance).Context(ctx).Do()
 	if err != nil {
 		return nil, err
 	}
@@ -203,7 +210,7 @@ func Create(ctx context.Context, project, zone, name, image, authorityDir string
 	for operation.Status != "RUNNING" && time.Since(start) < timeout {
 		log.Printf("[Create] %s: Sleeping -- status %s", name, operation.Status)
 		time.Sleep(250 * time.Millisecond)
-		service.ZoneOperations.Get(project, zone, operation.Name).Context(ctx).Do()
+		c.s.ZoneOperations.Get(project, zone, operation.Name).Context(ctx).Do()
 	}
 	if operation.Status != "RUNNING" {
 		// timed-out
@@ -215,7 +222,7 @@ func Create(ctx context.Context, project, zone, name, image, authorityDir string
 	start = time.Now()
 	timeout = 5 * time.Second
 	for addr == "" && time.Since(start) < timeout {
-		instance, err = service.Instances.Get(project, zone, name).Context(ctx).Do()
+		instance, err = c.s.Instances.Get(project, zone, name).Context(ctx).Do()
 		if err != nil {
 			return nil, err
 		}
@@ -248,8 +255,9 @@ func Create(ctx context.Context, project, zone, name, image, authorityDir string
 }
 
 // Delete deletes a Compute Engine instance
-func Delete(ctx context.Context, project, zone, name string) error {
-	operation, err := service.Instances.Delete(project, zone, name).Context(ctx).Do()
+func (c *ComputeEngine) Delete(ctx context.Context, project, zone, name string) error {
+	log.Print("[Delete] Entered")
+	operation, err := c.s.Instances.Delete(project, zone, name).Context(ctx).Do()
 	if err != nil {
 		return err
 	}
@@ -260,7 +268,7 @@ func Delete(ctx context.Context, project, zone, name string) error {
 	for operation.Status != "RUNNING" && time.Since(start) < timeout {
 		log.Printf("[Delete] %s: Sleeping -- status %s", name, operation.Status)
 		time.Sleep(250 * time.Millisecond)
-		service.ZoneOperations.Get(project, zone, operation.Name).Context(ctx).Do()
+		c.s.ZoneOperations.Get(project, zone, operation.Name).Context(ctx).Do()
 	}
 	if operation.Status != "RUNNING" {
 		// timed-out
@@ -271,9 +279,10 @@ func Delete(ctx context.Context, project, zone, name string) error {
 }
 
 // TODO(dazwilkin) should this return []bigmachine.Machine to match Create?
-func List(ctx context.Context, project, zone string) ([]string, error) {
+func (c *ComputeEngine) List(ctx context.Context, project, zone string) ([]string, error) {
+	log.Print("[List] Entered")
 	var result []string
-	instancesList := service.Instances.List(project, zone)
+	instancesList := c.s.Instances.List(project, zone)
 	//.Filter("network.tags=" + networkTag) -- does not work with the API (https://issuetracker.google.com/issues/143463446)
 	//.MaxResults(1) -- debugging-only forces pages to contain a single element to test paging
 
