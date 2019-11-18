@@ -85,8 +85,6 @@ func (s *System) HTTPClient() *http.Client {
 func (s *System) Init(b *bigmachine.B) error {
 	log.Print("[k8s:Init] Entered")
 
-	s.BootstrapImage = fmt.Sprintf("%s:%s", os.Getenv("IMG"), os.Getenv("TAG"))
-
 	// Mimicking  ec2machine.go implementation
 	var err error
 	if _, err := os.Stat(authorityDir); os.IsNotExist(err) {
