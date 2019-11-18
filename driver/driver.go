@@ -47,9 +47,6 @@ func Start() *bigmachine.B {
 			OnDemand:     *ondemand,
 		}
 	case "k8s":
-		if *kubeconfig == "" {
-			log.Fatalf("Kubernetes configuration file ('--bigm.kubeconfig') is required")
-		}
 		if *image == "" {
 			log.Fatalf("Kubernetes requires bootstrap image ('--bigm.image')")
 		}
