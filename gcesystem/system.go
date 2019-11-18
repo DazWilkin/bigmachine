@@ -53,11 +53,6 @@ var (
 )
 
 func init() {
-	if os.Getenv("GOOGLE_APPLICATION_CREDENTIALS") == "" {
-		// TODO(dazwilkin) When this System is running locally, the environment variable is required. When this System is running on a GCE Instance, it will be obtained automatically
-		// TODO(dazwilkin) Possibly check for the Metadata Service here to help with this decision?
-		log.Print("Compute Engine backend uses Application Default Credentials. GOOGLE_APPLICATION_CREDENTIALS environment variable is unset")
-	}
 	bigmachine.RegisterSystem(systemName, new(System))
 }
 
@@ -108,11 +103,12 @@ func (s *System) HTTPClient() *http.Client {
 }
 func (s *System) Init(b *bigmachine.B) error {
 	log.Print("[gce:Init] Entered")
-	if onGCE() {
-		log.Print("[gce:Init] Running on GCE")
-	} else {
-		log.Print("[gce:Init] Running off GCE")
-	}
+	log.Printf("[gce:Init] %srunning on Compute Engine", func() string {
+		if !onGCE() {
+			return "not "
+		}
+		return ""
+	}())
 
 	// Mimicking  ec2machine.go implementation
 	var err error
