@@ -59,13 +59,9 @@ docker push ${IMG}:${TAG}
 
 Hmmm:
 ```bash
-sed --in-place=.bak "s|\"TAG\": \"[0-9a-f]\{40\}\"|\"TAG\": \"${TAG}\"|g" ./.vscode/launch.json
+sed --in-place "s|--bigm.image=${REPO}\/${IMG}:[0-9a-f]\{40\}|--bigm.image=${REPO}\/${IMG}:${TAG}|g" ./.vscode/launch.json
 ```
 **NB** The repetition must be escpaed too `\{40\}`
-
-**NB** We'll reuse `${IMG}` and `${TAG}` in the next section
-
-**NB** The Dockerfile contains `USER 999` this prohibits (!) the container running privileged (e.g. `:443`) ports
 
 ## Run
 
@@ -104,15 +100,16 @@ gcloud iam service-accounts add-iam-policy-binding ${PROJECT_NUMBER}-compute@dev
 + `${IMAG}` and `${TAG}` are used to determine the bootstrap image to be used by the GCE instance
 
 ```bash
-go build && \
 GOOGLE_APPLICATION_CREDENTIALS=${FILE} \
 PROJECT=${PROJECT} \
 ZONE=${ZONE} \
-IMG=${IMG} \
-TAG=${TAG} \
-./bigpi \
+go run ./cmd/bigpi \
   --bigm.system=gce \
-  --nmach=2
+  --bigm.gceproject=${PROEJCT} \
+  --bigm.gcezone=${ZONE} \
+  --bigm.gceimage=${IMAGE} \
+  --nmachine=3 \
+  --nsamples=1000000000
 ```
 Then:
 ```bash
