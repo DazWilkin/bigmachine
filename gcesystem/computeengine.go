@@ -12,7 +12,6 @@ import (
 )
 
 const (
-	instanceType = "f1-micro"
 	imageProject = "cos-cloud"
 	imageFamily  = "cos-stable"
 	networkTag   = "bigmachine"
@@ -46,7 +45,7 @@ func NewClient(ctx context.Context) (*ComputeEngine, error) {
 }
 
 // Create creates a Compute Engine instance returning a bigmachine.Machine
-func (c *ComputeEngine) Create(ctx context.Context, project, zone, name, image, authorityDir string) (*bigmachine.Machine, error) {
+func (c *ComputeEngine) Create(ctx context.Context, project, zone, name, instanceType, image, authorityDir string) (*bigmachine.Machine, error) {
 	if project == "" {
 		return nil, fmt.Errorf("[Create] Requires a GCP Project ID")
 	}
