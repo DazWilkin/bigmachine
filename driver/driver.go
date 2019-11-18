@@ -28,6 +28,9 @@ var (
 	systemFlag   = flag.String("bigm.system", "local", "system on which to run the bigmachine")
 	instanceType = flag.String("bigm.ec2type", "m3.medium", "instance type with which to launch a bigmachine EC2 cluster")
 	ondemand     = flag.Bool("bigm.ec2ondemand", false, "use ec2 on-demand instances instead of spot")
+	project      = flag.String("bigm.project", "", "Google Cloud Platform project ID")
+	zone         = flag.String("bigm.zone", "", "Google Cloud Platform zone")
+	image        = flag.String("bigm.image", "", "Bootstrap image to be deployed on remote nodes")
 )
 
 // Start configures a bigmachine System based on the program's flags,
@@ -43,8 +46,20 @@ func Start() *bigmachine.B {
 			OnDemand:     *ondemand,
 		}
 	case "gce":
+		if *project == "" {
+			log.Fatal("GCP Project ID ('--bigm.project') is required")
+		}
+		if *zone == "" {
+			log.Fatal("GCP Zone ('--bigm.zone') is required")
+		}
+		if *image == "" {
+			log.Fatal("Image ('--bigm.image') is required")
+		}
+
 		sys = &gcesystem.System{
-			// TOOD(dazwilkin) This should be configurable either through the command-line or environment
+			Project:        *project,
+			Zone:           *zone,
+			BootstrapImage: *image,
 		}
 
 	case "local":
