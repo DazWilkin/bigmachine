@@ -208,11 +208,17 @@ func (s *System) Shutdown() {
 		log.Print("[gce:Exit] unable to enumerate machines")
 	}
 	// Delete these instances
+	var g errgroup.Group
 	for _, name := range names {
 		log.Printf("[gce:Exit] Deleting %s", name)
 		// Avoid closing over only the first value of name
 		name := name
-		go s.computeengine.Delete(ctx, s.Project, s.Zone, name)
+		g.Go(func() error {
+			return s.computeengine.Delete(ctx, s.Project, s.Zone, name)
+		})
+	}
+	if err := g.Wait(); err != nil {
+		log.Print("Unable to delete all machines")
 	}
 }
 
@@ -285,7 +291,7 @@ func (s *System) Start(ctx context.Context, count int) ([]*bigmachine.Machine, e
 	}
 	if failures > 0 {
 		// Failed to create some machines; recoverable
-		err = fmt.Errorf("[gce:Start] %d/%d machines were not created", failures, count)
+		log.Printf("[gce:Start] %d/%d machines were not created", failures, count)
 	}
 
 	// Now the machines are started, copy the authority (certificate) onto them
