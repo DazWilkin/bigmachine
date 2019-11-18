@@ -1,10 +1,9 @@
 # Google Compute Engine backend
 
-## Installation
-
+## Pre-req's
 
 ```bash
-IMAGE=gcr.io/bigmachine/gceboot:79618e260e20050bcaf2e17e3ad3ff92e77aad96
+IMAGE=gcr.io/bigmachine/gceboot:e8a199025a4de7d526f2a3ccaece195c1866ea6d
 ```
 
 ## Issues | Feature Requests
