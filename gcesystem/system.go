@@ -74,6 +74,7 @@ type System struct {
 	Project           string
 	Zone              string
 	BootstrapImage    string
+	computeengine     *ComputeEngine
 	authority         *authority.T
 	authorityContents []byte
 	clientOnce        once.Task
@@ -111,15 +112,6 @@ func (s *System) Init(b *bigmachine.B) error {
 	} else {
 		log.Print("[gce:Init] Running off GCE")
 	}
-	// TODO(dazwilkin) Investigate https://godoc.org/github.com/grailbio/base/config per https://github.com/grailbio/bigmachine/issues/1
-	// TODO(dazwilkin) Assuming environmental variables (used during development) for the System configuration
-	// TODO(dazwilkin) instance.go repopulates these value from the host into the remote nodes
-	log.Printf("[gce:Init] Getenv(PROJECT)=%s", os.Getenv("PROJECT"))
-	s.Project = os.Getenv("PROJECT")
-	log.Printf("[gce:Init] Getenv(ZONE)=%s", os.Getenv("ZONE"))
-	s.Zone = os.Getenv("ZONE")
-	log.Printf("[gce:Init] Getenv(IMG)=%s:Getenv(TAG)=%s", os.Getenv("IMG"), os.Getenv("TAG"))
-	s.BootstrapImage = fmt.Sprintf("%s:%s", os.Getenv("IMG"), os.Getenv("TAG"))
 
 	// Mimicking  ec2machine.go implementation
 	var err error
@@ -209,12 +201,9 @@ func (s *System) Read(ctx context.Context, m *bigmachine.Machine, filename strin
 func (s *System) Shutdown() {
 	log.Print("[gce:Shutdown] Entered")
 	ctx := context.TODO()
-	err := NewClient(ctx)
-	if err != nil {
-		log.Print("[gce:Exit] unable to delete Compute Engine client")
-	}
+
 	// Determine which instances belong to bigmachine using the Tag used when Create'ing
-	names, err := List(ctx, s.Project, s.Zone)
+	names, err := s.computeengine.List(ctx, s.Project, s.Zone)
 	if err != nil {
 		log.Print("[gce:Exit] unable to enumerate machines")
 	}
@@ -223,7 +212,7 @@ func (s *System) Shutdown() {
 		log.Printf("[gce:Exit] Deleting %s", name)
 		// Avoid closing over only the first value of name
 		name := name
-		go Delete(ctx, s.Project, s.Zone, name)
+		go s.computeengine.Delete(ctx, s.Project, s.Zone, name)
 	}
 }
 
@@ -238,7 +227,8 @@ func (s *System) Start(ctx context.Context, count int) ([]*bigmachine.Machine, e
 		return nil, fmt.Errorf("[gce:Start] unable to create <0 instances")
 	}
 
-	err := NewClient(ctx)
+	var err error
+	s.computeengine, err = NewClient(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -261,7 +251,7 @@ func (s *System) Start(ctx context.Context, count int) ([]*bigmachine.Machine, e
 		name := fmt.Sprintf("%s-%02d", prefix, i)
 		go func(name string) {
 			defer wg.Done()
-			machine, err := Create(ctx, s.Project, s.Zone, name, s.BootstrapImage, authorityDir)
+			machine, err := s.computeengine.Create(ctx, s.Project, s.Zone, name, s.BootstrapImage, authorityDir)
 			ch <- Result{
 				machine: machine,
 				err:     err,
