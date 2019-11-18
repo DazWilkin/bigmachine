@@ -1,5 +1,12 @@
 # Google Compute Engine backend
 
+## Installation
+
+
+```bash
+IMAGE=gcr.io/bigmachine/gceboot:79618e260e20050bcaf2e17e3ad3ff92e77aad96
+```
+
 ## Issues | Feature Requests
 
 + Currently limited to `f1-micro` (because these are ~free); should refactor to permit user-defined machine type
