@@ -519,7 +519,7 @@ func (m *Machine) exec(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
 	var info Info
 	if err := m.call(ctx, "Supervisor.Info", struct{}{}, &info); err != nil {
